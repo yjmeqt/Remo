@@ -169,6 +169,7 @@ struct SettingsPage: View {
                     TextField("Username", text: $s.username)
                 }
 
+                #if DEBUG
                 Section("Debug") {
                     LabeledContent("Port", value: "\(Remo.defaultPort)")
                     LabeledContent("Capabilities") {
@@ -176,6 +177,7 @@ struct SettingsPage: View {
                             .font(.caption)
                     }
                 }
+                #endif
             }
             .navigationTitle("Settings")
         }
