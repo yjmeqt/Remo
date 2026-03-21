@@ -1,0 +1,47 @@
+[package]
+name = "remo-sdk"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+# When building for iOS, use: cargo build --features ios
+crate-type = ["lib", "staticlib"]
+
+[dependencies]
+remo-protocol = { path = "../remo-protocol" }
+remo-transport = { path = "../remo-transport" }
+remo-objc = { path = "../remo-objc" }
+
+[features]
+default = []
+ios = ["remo-objc/uikit"]
+
+[dependencies.tokio]
+workspace = true
+
+[dependencies.serde_json]
+workspace = true
+
+[dependencies.tracing]
+workspace = true
+
+[dependencies.tracing-subscriber]
+workspace = true
+
+[dependencies.dashmap]
+workspace = true
+
+[dependencies.futures]
+workspace = true
+
+[dependencies.thiserror]
+workspace = true
+
+[dependencies.uuid]
+workspace = true
+
+[build-dependencies]
+# cbindgen = "0.27"  # Uncomment when generating C headers
