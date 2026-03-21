@@ -71,8 +71,6 @@ public func setupRemo(store: AppStore) {
         }
         return ["status": "ok", "counter": store.counter + (params["amount"] as? Int ?? 1)]
     }
-
-    Remo.start()
 }
 
 // MARK: - Views
