@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/remo-core",
+    "crates/remo-transport",
+    "crates/remo-host",
+    "crates/remo-agent",
+    "crates/remo-objc",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+remo-core = { path = "crates/remo-core" }
+remo-transport = { path = "crates/remo-transport" }
+remo-agent = { path = "crates/remo-agent" }
+remo-objc = { path = "crates/remo-objc" }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rmp-serde = "1"
+bytes = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+plist = "1"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"

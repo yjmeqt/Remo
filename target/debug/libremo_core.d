@@ -1,0 +1,1 @@
+/workspace/target/debug/libremo_core.rlib: /workspace/crates/remo-core/src/error.rs /workspace/crates/remo-core/src/lib.rs /workspace/crates/remo-core/src/protocol.rs /workspace/crates/remo-core/src/types.rs

@@ -1,0 +1,19 @@
+[package]
+name = "remo-transport"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+remo-core = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+bytes = { workspace = true }
+plist = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
