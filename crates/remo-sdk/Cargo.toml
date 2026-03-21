@@ -3,6 +3,9 @@ name = "remo-sdk"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [lib]
 # When building for iOS, use: cargo build --features ios
 crate-type = ["lib", "staticlib"]

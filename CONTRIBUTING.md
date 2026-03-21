@@ -8,6 +8,13 @@ Thanks for your interest in contributing! This guide will help you get started.
 - **Xcode 26+** (for iOS targets and Apple platform headers)
 - **cbindgen** (`cargo install cbindgen`) for generating C/Swift headers
 
+## Setup
+
+```bash
+# Install git hooks (runs fmt + clippy before each commit)
+git config core.hooksPath .githooks
+```
+
 ## Building
 
 ```bash
@@ -31,22 +38,22 @@ Run them explicitly with `cargo test -- --ignored` when a device is available.
 
 ```bash
 # Check for common mistakes
-cargo clippy -- -D warnings
+cargo clippy --workspace -- -D warnings
 
 # Check formatting
-cargo fmt --check
+cargo fmt --all --check
 
 # Auto-format
-cargo fmt
+cargo fmt --all
 ```
 
 ## Submitting Changes
 
 1. **Fork** the repository
 2. **Create a branch** from `main` (`git checkout -b my-feature`)
-3. **Make your changes** and add tests where appropriate
-4. **Run checks** locally: `cargo fmt --check && cargo clippy -- -D warnings && cargo test`
-5. **Commit** with a clear message describing the change
+3. **Set up git hooks**: `git config core.hooksPath .githooks`
+4. **Make your changes** and add tests where appropriate
+5. **Commit** — the pre-commit hook will run `cargo fmt --check` and `cargo clippy` automatically
 6. **Open a Pull Request** against `main`
 
 ## Guidelines

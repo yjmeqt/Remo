@@ -99,6 +99,7 @@ mod apple {
 mod apple {
     use super::*;
 
+    #[allow(clippy::unnecessary_wraps)]
     pub unsafe fn snapshot_key_window() -> Option<ViewNode> {
         tracing::warn!("snapshot_key_window called on non-Apple target, returning stub");
         Some(ViewNode {

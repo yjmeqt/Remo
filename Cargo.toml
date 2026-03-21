@@ -10,6 +10,30 @@ members = [
     "crates/remo-cli",
 ]
 
+[workspace.lints.clippy]
+# Correctness & safety
+await_holding_lock = "warn"
+large_futures = "warn"
+undocumented_unsafe_blocks = "warn"
+
+# Style & idioms
+cloned_instead_of_copied = "warn"
+flat_map_option = "warn"
+implicit_clone = "warn"
+manual_let_else = "warn"
+needless_pass_by_value = "warn"
+redundant_closure_for_method_calls = "warn"
+semicolon_if_nothing_returned = "warn"
+unnecessary_wraps = "warn"
+unused_self = "warn"
+
+# Performance
+trivially_copy_pass_by_ref = "warn"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+unused_qualifications = "warn"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

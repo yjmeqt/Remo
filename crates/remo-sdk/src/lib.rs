@@ -1,3 +1,4 @@
+#[allow(unsafe_code)]
 pub mod ffi;
 pub mod registry;
 pub mod server;

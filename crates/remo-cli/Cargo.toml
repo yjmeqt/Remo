@@ -3,6 +3,9 @@ name = "remo-cli"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "remo"
 path = "src/main.rs"

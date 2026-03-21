@@ -179,9 +179,8 @@ pub enum DeviceEvent {
 }
 
 fn parse_device_event(value: plist::Value) -> DeviceEvent {
-    let dict = match value.as_dictionary() {
-        Some(d) => d,
-        None => return DeviceEvent::Unknown(value),
+    let Some(dict) = value.as_dictionary() else {
+        return DeviceEvent::Unknown(value);
     };
 
     let msg_type = dict
@@ -197,7 +196,7 @@ fn parse_device_event(value: plist::Value) -> DeviceEvent {
         "Detached" => {
             let device_id = dict
                 .get("DeviceID")
-                .and_then(|v| v.as_unsigned_integer())
+                .and_then(plist::Value::as_unsigned_integer)
                 .unwrap_or(0) as u32;
             DeviceEvent::Detached { device_id }
         }

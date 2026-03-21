@@ -111,6 +111,7 @@ pub unsafe extern "C" fn remo_register_capability(
         let params_str = CString::new(params.to_string())
             .map_err(|e| crate::registry::HandlerError::Internal(e.to_string()))?;
 
+        // SAFETY: params_str is a valid CString; handle outlives this closure.
         let result_ptr = unsafe { handle.invoke(params_str.as_ptr()) };
 
         if result_ptr.is_null() {
@@ -119,12 +120,13 @@ pub unsafe extern "C" fn remo_register_capability(
             ));
         }
 
+        // SAFETY: result_ptr is non-null (checked above) and points to a strdup'd C string.
         let result_cstr = unsafe { CStr::from_ptr(result_ptr) };
         let result_str = result_cstr.to_string_lossy();
         let value: Value = serde_json::from_str(&result_str)
             .map_err(|e| crate::registry::HandlerError::Internal(e.to_string()))?;
 
-        // Free the strdup'd string from Swift side.
+        // SAFETY: result_ptr was allocated by strdup on the Swift side; freeing it here.
         unsafe {
             libc_free(result_ptr as *mut std::ffi::c_void);
         }
@@ -162,7 +164,9 @@ pub extern "C" fn remo_list_capabilities() -> *mut c_char {
 /// Wrapper to make a raw pointer Send + Sync.
 #[derive(Clone, Copy)]
 struct SendPtr(*mut std::ffi::c_void);
+// SAFETY: The Swift caller guarantees the context pointer is thread-safe.
 unsafe impl Send for SendPtr {}
+// SAFETY: The Swift caller guarantees the context pointer is thread-safe.
 unsafe impl Sync for SendPtr {}
 
 /// Wraps the FFI callback context so the closure is Send + Sync.
@@ -170,7 +174,9 @@ struct CallbackHandle {
     ctx: SendPtr,
     cb: CapabilityCallback,
 }
+// SAFETY: CallbackHandle's fields (SendPtr + extern "C" fn) are thread-safe per Swift contract.
 unsafe impl Send for CallbackHandle {}
+// SAFETY: CallbackHandle's fields (SendPtr + extern "C" fn) are thread-safe per Swift contract.
 unsafe impl Sync for CallbackHandle {}
 
 impl CallbackHandle {

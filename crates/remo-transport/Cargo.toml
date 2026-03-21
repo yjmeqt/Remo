@@ -3,6 +3,9 @@ name = "remo-transport"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 remo-protocol = { path = "../remo-protocol" }
 tokio.workspace = true
