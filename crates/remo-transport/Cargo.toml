@@ -1,0 +1,12 @@
+[package]
+name = "remo-transport"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+remo-protocol = { path = "../remo-protocol" }
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+tracing.workspace = true
+thiserror.workspace = true

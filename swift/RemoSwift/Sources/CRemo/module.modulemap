@@ -1,0 +1,5 @@
+module CRemo {
+    header "../RemoSwift/include/remo.h"
+    link "remo_sdk"
+    export *
+}

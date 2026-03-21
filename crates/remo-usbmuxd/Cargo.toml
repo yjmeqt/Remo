@@ -1,0 +1,12 @@
+[package]
+name = "remo-usbmuxd"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio.workspace = true
+bytes.workspace = true
+plist.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+serde.workspace = true

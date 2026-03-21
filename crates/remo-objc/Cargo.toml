@@ -1,0 +1,19 @@
+[package]
+name = "remo-objc"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+# objc2 ecosystem — only compiled on Apple targets.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSDictionary", "NSValue"] }
+objc2-ui-kit = { version = "0.3", features = ["UIView", "UIWindow", "UIApplication", "UIViewController", "UIResponder"], optional = true }
+
+[features]
+default = []
+uikit = ["objc2-ui-kit"]

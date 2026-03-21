@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/remo-protocol",
+    "crates/remo-transport",
+    "crates/remo-usbmuxd",
+    "crates/remo-sdk",
+    "crates/remo-objc",
+    "crates/remo-desktop",
+    "crates/remo-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+repository = "https://github.com/yi-jiang-applovin/Remo"
+
+[workspace.dependencies]
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+
+# Bytes / framing
+bytes = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# plist (for usbmuxd)
+plist = "1"
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Async utilities
+futures = "0.3"
+dashmap = "6"
