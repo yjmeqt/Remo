@@ -74,3 +74,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # Async utilities
 futures = "0.3"
 dashmap = "6"
+
+# Encoding
+base64 = "0.22"

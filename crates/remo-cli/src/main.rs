@@ -2,8 +2,10 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use anyhow::Result;
+use base64::Engine;
 use clap::{Parser, Subcommand};
 use remo_desktop::{DeviceManager, DeviceTransport, RpcClient};
+use remo_protocol::ResponseResult;
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
 
@@ -58,6 +60,55 @@ enum Command {
 
     /// Watch events from a device.
     Watch {
+        /// Device address.
+        #[arg(short, long, default_value = "127.0.0.1:9930")]
+        addr: SocketAddr,
+
+        /// USB device ID (from `remo devices`). Overrides --addr.
+        #[arg(short, long)]
+        device: Option<u32>,
+    },
+
+    /// Dump the view hierarchy tree.
+    Tree {
+        /// Device address.
+        #[arg(short, long, default_value = "127.0.0.1:9930")]
+        addr: SocketAddr,
+
+        /// USB device ID (from `remo devices`). Overrides --addr.
+        #[arg(short, long)]
+        device: Option<u32>,
+
+        /// Maximum depth to traverse (omit for full tree).
+        #[arg(short, long)]
+        max_depth: Option<u64>,
+    },
+
+    /// Take a screenshot of the device.
+    Screenshot {
+        /// Device address.
+        #[arg(short, long, default_value = "127.0.0.1:9930")]
+        addr: SocketAddr,
+
+        /// USB device ID (from `remo devices`). Overrides --addr.
+        #[arg(short = 'D', long)]
+        device: Option<u32>,
+
+        /// Output file path.
+        #[arg(short, long, default_value = "screenshot.jpg")]
+        output: String,
+
+        /// Image format: jpeg or png.
+        #[arg(short, long, default_value = "jpeg")]
+        format: String,
+
+        /// JPEG quality (0.0 - 1.0).
+        #[arg(short, long, default_value = "0.8")]
+        quality: f64,
+    },
+
+    /// Show device and app information.
+    Info {
         /// Device address.
         #[arg(short, long, default_value = "127.0.0.1:9930")]
         addr: SocketAddr,
@@ -131,6 +182,25 @@ async fn main() -> Result<()> {
                 println!("[event] {json}");
             }
         }
+        Command::Tree {
+            addr,
+            device,
+            max_depth,
+        } => {
+            cmd_tree(addr, device, max_depth).await?;
+        }
+        Command::Screenshot {
+            addr,
+            device,
+            output,
+            format,
+            quality,
+        } => {
+            cmd_screenshot(addr, device, &output, &format, quality).await?;
+        }
+        Command::Info { addr, device } => {
+            cmd_info(addr, device).await?;
+        }
     }
 
     Ok(())
@@ -196,6 +266,165 @@ async fn cmd_devices() -> Result<()> {
                 transport, dev.display_name, addr_str
             );
         }
+    }
+
+    Ok(())
+}
+
+async fn cmd_tree(addr: SocketAddr, device: Option<u32>, max_depth: Option<u64>) -> Result<()> {
+    let (event_tx, _) = mpsc::channel(16);
+    let client = connect(device, addr, event_tx).await?;
+
+    let mut params = serde_json::json!({});
+    if let Some(d) = max_depth {
+        params["max_depth"] = serde_json::json!(d);
+    }
+
+    let response = client
+        .call("__view_tree", params, Duration::from_secs(10))
+        .await?;
+
+    match response.result {
+        ResponseResult::Ok { data } => {
+            if data.is_null() {
+                println!("No key window found.");
+            } else {
+                print_tree(&data, 0);
+            }
+        }
+        ResponseResult::Error { message, .. } => {
+            anyhow::bail!("view tree failed: {message}");
+        }
+    }
+
+    Ok(())
+}
+
+fn print_tree(node: &serde_json::Value, indent: usize) {
+    let prefix = "  ".repeat(indent);
+    let class = node["class_name"].as_str().unwrap_or("?");
+    let frame = &node["frame"];
+    let x = frame["x"].as_f64().unwrap_or(0.0);
+    let y = frame["y"].as_f64().unwrap_or(0.0);
+    let w = frame["width"].as_f64().unwrap_or(0.0);
+    let h = frame["height"].as_f64().unwrap_or(0.0);
+
+    let mut extras = Vec::new();
+    if node["is_hidden"].as_bool() == Some(true) {
+        extras.push("hidden".to_string());
+    }
+    let alpha = node["alpha"].as_f64().unwrap_or(1.0);
+    if alpha < 1.0 {
+        extras.push(format!("alpha={alpha:.1}"));
+    }
+    if let Some(aid) = node["accessibility_id"].as_str() {
+        extras.push(format!("id=\"{aid}\""));
+    }
+
+    let extra_str = if extras.is_empty() {
+        String::new()
+    } else {
+        format!(" [{}]", extras.join(", "))
+    };
+
+    println!("{prefix}{class} ({x:.0}, {y:.0}, {w:.0}x{h:.0}){extra_str}");
+
+    if let Some(children) = node["children"].as_array() {
+        for child in children {
+            print_tree(child, indent + 1);
+        }
+    }
+}
+
+async fn cmd_screenshot(
+    addr: SocketAddr,
+    device: Option<u32>,
+    output: &str,
+    format: &str,
+    quality: f64,
+) -> Result<()> {
+    let (event_tx, _) = mpsc::channel(16);
+    let client = connect(device, addr, event_tx).await?;
+
+    let response = client
+        .call(
+            "__screenshot",
+            serde_json::json!({"format": format, "quality": quality}),
+            Duration::from_secs(15),
+        )
+        .await?;
+
+    match response.result {
+        ResponseResult::Ok { data } => {
+            let b64 = data["image"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("no image data in response"))?;
+            let bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
+            let w = data["width"].as_f64().unwrap_or(0.0);
+            let h = data["height"].as_f64().unwrap_or(0.0);
+            let scale = data["scale"].as_f64().unwrap_or(1.0);
+
+            std::fs::write(output, &bytes)?;
+            println!(
+                "Screenshot saved to {output} ({} bytes, {w:.0}x{h:.0} @{scale:.0}x)",
+                bytes.len()
+            );
+        }
+        ResponseResult::Error { message, .. } => {
+            anyhow::bail!("screenshot failed: {message}");
+        }
+    }
+
+    Ok(())
+}
+
+async fn cmd_info(addr: SocketAddr, device: Option<u32>) -> Result<()> {
+    let (event_tx, _) = mpsc::channel(16);
+    let client = connect(device, addr, event_tx).await?;
+
+    let dev_resp = client
+        .call(
+            "__device_info",
+            serde_json::json!({}),
+            Duration::from_secs(5),
+        )
+        .await?;
+    let app_resp = client
+        .call("__app_info", serde_json::json!({}), Duration::from_secs(5))
+        .await?;
+
+    println!("=== Device ===");
+    if let ResponseResult::Ok { data } = &dev_resp.result {
+        println!("  Name:    {}", data["name"].as_str().unwrap_or("unknown"));
+        println!("  Model:   {}", data["model"].as_str().unwrap_or("unknown"));
+        println!(
+            "  OS:      {} {}",
+            data["system_name"].as_str().unwrap_or("?"),
+            data["system_version"].as_str().unwrap_or("?")
+        );
+        println!(
+            "  Screen:  {:.0}x{:.0} @{:.0}x",
+            data["screen_width"].as_f64().unwrap_or(0.0),
+            data["screen_height"].as_f64().unwrap_or(0.0),
+            data["screen_scale"].as_f64().unwrap_or(1.0),
+        );
+    }
+
+    println!("\n=== App ===");
+    if let ResponseResult::Ok { data } = &app_resp.result {
+        println!(
+            "  Name:    {}",
+            data["display_name"].as_str().unwrap_or("unknown")
+        );
+        println!(
+            "  Bundle:  {}",
+            data["bundle_id"].as_str().unwrap_or("unknown")
+        );
+        println!(
+            "  Version: {} ({})",
+            data["version"].as_str().unwrap_or("?"),
+            data["build"].as_str().unwrap_or("?")
+        );
     }
 
     Ok(())

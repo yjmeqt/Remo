@@ -757,6 +757,7 @@ name = "remo-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "remo-desktop",
  "remo-protocol",
@@ -812,6 +813,7 @@ dependencies = [
 name = "remo-sdk"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "dashmap",
  "futures",
  "remo-bonjour",

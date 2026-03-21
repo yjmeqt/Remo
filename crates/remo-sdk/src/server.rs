@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use base64::Engine;
 use remo_protocol::{ErrorCode, Message, Request, Response};
 use remo_transport::{Connection, Listener};
 use tokio::sync::{broadcast, oneshot};
@@ -18,13 +19,7 @@ impl RemoServer {
     pub fn new(registry: CapabilityRegistry, port: u16) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
 
-        // Register built-in capabilities.
-        let reg = registry.clone();
-        registry.register_sync("__list_capabilities", move |_| {
-            Ok(serde_json::json!(reg.list()))
-        });
-
-        registry.register_sync("__ping", |_| Ok(serde_json::json!({"pong": true})));
+        register_builtins(&registry);
 
         Self {
             registry,
@@ -93,6 +88,119 @@ impl RemoServer {
         let _ = self.shutdown_tx.send(());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Built-in capabilities
+// ---------------------------------------------------------------------------
+
+#[allow(unsafe_code)]
+fn register_builtins(registry: &CapabilityRegistry) {
+    let reg = registry.clone();
+    registry.register_sync("__list_capabilities", move |_| {
+        Ok(serde_json::json!(reg.list()))
+    });
+
+    registry.register_sync("__ping", |_| Ok(serde_json::json!({"pong": true})));
+
+    registry.register_sync("__view_tree", |params| {
+        let depth: Option<usize> = params
+            .get("max_depth")
+            .and_then(serde_json::Value::as_u64)
+            .map(|d| d as usize);
+
+        let tree = remo_objc::run_on_main_sync(|| {
+            // SAFETY: run_on_main_sync ensures main-thread execution.
+            let full_tree = unsafe { remo_objc::snapshot_view_tree() };
+            full_tree.map(|t| {
+                if let Some(max) = depth {
+                    truncate_tree(t, max, 0)
+                } else {
+                    t
+                }
+            })
+        });
+
+        Ok(serde_json::to_value(tree).unwrap_or_default())
+    });
+
+    registry.register_sync("__screenshot", |params| {
+        let format = params
+            .get("format")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("jpeg");
+        let quality = params
+            .get("quality")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.8);
+
+        let result = remo_objc::run_on_main_sync(|| {
+            // SAFETY: run_on_main_sync ensures main-thread execution.
+            unsafe { remo_objc::capture_screenshot(format, quality) }
+        });
+
+        match result {
+            Some(sr) => {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&sr.bytes);
+                Ok(serde_json::json!({
+                    "image": b64,
+                    "format": sr.format,
+                    "width": sr.width,
+                    "height": sr.height,
+                    "scale": sr.scale,
+                    "size": sr.bytes.len(),
+                }))
+            }
+            None => Err(crate::registry::HandlerError::Internal(
+                "screenshot capture failed".into(),
+            )),
+        }
+    });
+
+    registry.register_sync("__device_info", |_| {
+        let info = remo_objc::run_on_main_sync(|| {
+            // SAFETY: run_on_main_sync ensures main-thread execution.
+            unsafe { remo_objc::get_device_info() }
+        });
+        Ok(serde_json::to_value(info).unwrap_or_default())
+    });
+
+    registry.register_sync("__app_info", |_| {
+        let info = remo_objc::run_on_main_sync(|| {
+            // SAFETY: run_on_main_sync ensures main-thread execution.
+            unsafe { remo_objc::get_app_info() }
+        });
+        Ok(serde_json::to_value(info).unwrap_or_default())
+    });
+}
+
+fn truncate_tree(
+    mut node: remo_objc::ViewNode,
+    max_depth: usize,
+    current: usize,
+) -> remo_objc::ViewNode {
+    if current >= max_depth {
+        let count = count_descendants(&node);
+        node.children.clear();
+        if count > 0 {
+            node.class_name = format!("{} (+{count} children)", node.class_name);
+        }
+    } else {
+        node.children = node
+            .children
+            .into_iter()
+            .map(|c| truncate_tree(c, max_depth, current + 1))
+            .collect();
+    }
+    node
+}
+
+fn count_descendants(node: &remo_objc::ViewNode) -> usize {
+    node.children.len() + node.children.iter().map(count_descendants).sum::<usize>()
+}
+
+// ---------------------------------------------------------------------------
+// Connection handling
+// ---------------------------------------------------------------------------
 
 async fn handle_connection(mut conn: Connection, registry: CapabilityRegistry) {
     let peer = conn.peer_addr();

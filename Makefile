@@ -1,4 +1,4 @@
-.PHONY: setup build check test cli ios clean fmt lint
+.PHONY: setup build check test cli ios ios-sim ios-device clean fmt lint
 
 # First-time setup (run once after clone or worktree creation)
 setup:
@@ -22,12 +22,18 @@ cli:
 	cargo build -p remo-cli --release
 	@echo "Binary: target/release/remo"
 
-# Build iOS static library (device + simulator)
+# Build iOS XCFramework — pick the fastest option for your workflow:
+#   make ios-sim     arm64 simulator only (~16s, local dev)
+#   make ios-device  arm64 device only    (~16s, real device)
+#   make ios         all targets, release (~50s, CI / distribution)
 ios:
 	./build-ios.sh release
 
-ios-debug:
-	./build-ios.sh debug
+ios-sim:
+	./build-ios.sh sim
+
+ios-device:
+	./build-ios.sh device
 
 # Format
 fmt:

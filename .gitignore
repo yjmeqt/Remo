@@ -1,5 +1,6 @@
 # Build artifacts
 /target/
+/build/
 
 # Worktrees
 .worktrees/
