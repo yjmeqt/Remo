@@ -76,6 +76,7 @@ pub unsafe extern "C" fn remo_start(port: u16) {
     if let Some(p) = actual_port {
         lock.actual_port = Some(p);
 
+        let _rt_guard = lock.runtime.enter();
         match remo_bonjour::ServiceRegistration::register(
             remo_bonjour::SERVICE_TYPE,
             p,

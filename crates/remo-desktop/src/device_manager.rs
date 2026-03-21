@@ -138,12 +138,13 @@ impl DeviceManager {
 
     /// Start Bonjour service discovery for simulators and Wi-Fi devices.
     pub fn start_bonjour_discovery(&self) -> Result<(), remo_bonjour::BonjourError> {
-        let (_browser, mut rx) = ServiceBrowser::browse(remo_bonjour::SERVICE_TYPE)?;
+        let (browser, mut rx) = ServiceBrowser::browse(remo_bonjour::SERVICE_TYPE)?;
 
         let devices = Arc::clone(&self.devices);
         let event_tx = self.event_tx.clone();
 
         tokio::spawn(async move {
+            let _browser = browser;
             while let Some(event) = rx.recv().await {
                 match event {
                     BrowseEvent::Found(svc) => {
