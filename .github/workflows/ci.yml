@@ -41,7 +41,11 @@ jobs:
       - name: Build XCFramework
         run: ./build-ios.sh release
       - name: Verify Swift integration
+        env:
+          REMO_LOCAL: "1"
         run: |
-          cd swift/RemoSwift
-          swift build --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
-            -Xswiftc -target -Xswiftc arm64-apple-ios17.0-simulator
+          xcodebuild test \
+            -workspace examples/ios/RemoExample.xcworkspace \
+            -scheme RemoExample \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -skipPackagePluginValidation
