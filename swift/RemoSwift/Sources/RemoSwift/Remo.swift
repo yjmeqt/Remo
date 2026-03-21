@@ -26,7 +26,17 @@ public final class Remo {
     /// Default port the Remo server listens on.
     public static let defaultPort: UInt16 = 9930
 
+    /// The actual port the server is listening on.
+    /// Returns 0 if the server has not started.
+    public static var port: UInt16 {
+        remo_get_port()
+    }
+
     /// Start the embedded TCP server.
+    ///
+    /// Pass `port: 0` for automatic port assignment (recommended for
+    /// multi-simulator setups). The actual port is available via `Remo.port`
+    /// after start, and is advertised via Bonjour automatically.
     public static func start(port: UInt16 = defaultPort) {
         remo_start(port)
     }

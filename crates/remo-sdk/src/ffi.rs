@@ -21,6 +21,8 @@ struct RemoGlobal {
     runtime: Runtime,
     registry: CapabilityRegistry,
     shutdown_tx: Option<broadcast::Sender<()>>,
+    actual_port: Option<u16>,
+    bonjour_reg: Option<remo_bonjour::ServiceRegistration>,
 }
 
 static GLOBAL: OnceLock<std::sync::Mutex<RemoGlobal>> = OnceLock::new();
@@ -32,6 +34,8 @@ fn global() -> &'static std::sync::Mutex<RemoGlobal> {
             runtime,
             registry: CapabilityRegistry::new(),
             shutdown_tx: None,
+            actual_port: None,
+            bonjour_reg: None,
         })
     })
 }
@@ -47,19 +51,58 @@ pub unsafe extern "C" fn remo_start(port: u16) {
         .try_init();
 
     let g = global();
-    let mut lock = g.lock().unwrap();
 
-    let registry = lock.registry.clone();
-    let server = RemoServer::new(registry, port);
-    lock.shutdown_tx = Some(server.shutdown_handle());
+    let (port_rx, rt_handle) = {
+        let mut lock = g.lock().unwrap();
 
-    lock.runtime.spawn(async move {
-        if let Err(e) = server.run().await {
-            tracing::error!("remo server error: {e}");
-        }
+        let registry = lock.registry.clone();
+        let server = RemoServer::new(registry, port);
+        lock.shutdown_tx = Some(server.shutdown_handle());
+
+        let (port_tx, port_rx) = tokio::sync::oneshot::channel();
+        let rt_handle = lock.runtime.handle().clone();
+
+        lock.runtime.spawn(async move {
+            if let Err(e) = server.run(Some(port_tx)).await {
+                tracing::error!("remo server error: {e}");
+            }
+        });
+
+        (port_rx, rt_handle)
+    }; // lock released here
+
+    // Wait for the server to bind — no lock held, so other FFI calls won't deadlock.
+    let actual_port = rt_handle.block_on(async {
+        tokio::time::timeout(std::time::Duration::from_secs(2), port_rx)
+            .await
+            .ok()
+            .and_then(Result::ok)
     });
 
-    info!(port, "remo started via FFI");
+    // Re-acquire lock to store results.
+    let mut lock = g.lock().unwrap();
+
+    if let Some(p) = actual_port {
+        lock.actual_port = Some(p);
+
+        let _rt_guard = lock.runtime.enter();
+        match remo_bonjour::ServiceRegistration::register(
+            remo_bonjour::SERVICE_TYPE,
+            p,
+            None,
+            None,
+        ) {
+            Ok(reg) => {
+                lock.bonjour_reg = Some(reg);
+                info!(port = p, "bonjour advertisement started");
+            }
+            Err(e) => {
+                tracing::warn!("bonjour registration failed (non-fatal): {e}");
+            }
+        }
+    }
+
+    info!(port = actual_port.unwrap_or(port), "remo started via FFI");
 }
 
 /// Stop the Remo server gracefully.
@@ -68,9 +111,21 @@ pub extern "C" fn remo_stop() {
     info!("remo stop requested");
     let g = global();
     let mut lock = g.lock().unwrap();
+    // Drop Bonjour registration first (de-advertises the service).
+    lock.bonjour_reg.take();
     if let Some(tx) = lock.shutdown_tx.take() {
         let _ = tx.send(());
     }
+    lock.actual_port = None;
+}
+
+/// Return the actual port the server is listening on.
+/// Returns 0 if the server has not started yet.
+#[no_mangle]
+pub extern "C" fn remo_get_port() -> u16 {
+    let g = global();
+    let lock = g.lock().unwrap();
+    lock.actual_port.unwrap_or(0)
 }
 
 /// Callback type for capability handlers invoked from Swift.
