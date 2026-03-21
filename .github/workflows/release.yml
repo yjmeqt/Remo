@@ -23,9 +23,6 @@ jobs:
         with:
           targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
 
-      - name: Install cbindgen
-        run: cargo install cbindgen
-
       - name: Build XCFramework
         run: ./build-ios.sh release
 
