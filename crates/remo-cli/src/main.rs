@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use remo_desktop::{DeviceManager, RpcClient};
+use remo_desktop::{DeviceManager, DeviceTransport, RpcClient};
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
 
@@ -20,7 +20,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// List connected iOS devices.
+    /// List connected iOS devices (USB + Bonjour).
     Devices,
 
     /// Call a capability on a device.
@@ -159,19 +159,41 @@ async fn connect(
 }
 
 async fn cmd_devices() -> Result<()> {
-    println!("Scanning for devices via usbmuxd...");
-    let devices = remo_usbmuxd::list_devices().await?;
+    let (dm, mut event_rx) = DeviceManager::new();
 
+    if let Err(e) = dm.start_usb_discovery().await {
+        eprintln!("USB discovery unavailable: {e}");
+    }
+
+    if let Err(e) = dm.start_bonjour_discovery() {
+        eprintln!("Bonjour discovery unavailable: {e}");
+    }
+
+    println!("Scanning for devices (3 seconds)...\n");
+
+    let _ = tokio::time::timeout(Duration::from_secs(3), async {
+        while (event_rx.recv().await).is_some() {}
+    })
+    .await;
+
+    let devices = dm.list_devices();
     if devices.is_empty() {
         println!("No devices found.");
     } else {
-        println!("{:<12} {:<40} TYPE", "DEVICE_ID", "SERIAL");
-        for dev in devices.values() {
-            println!(
-                "{:<12} {:<40} {}",
-                dev.device_id, dev.serial, dev.connection_type
-            );
+        println!("{:<16} {:<30} {:<20}", "TYPE", "NAME", "ADDRESS");
+        for dev in &devices {
+            let addr_str = dev
+                .addr()
+                .map(|a| a.to_string())
+                .unwrap_or_else(|| "N/A (USB tunnel)".into());
+            let transport = match &dev.transport {
+                DeviceTransport::Usb { .. } => "USB",
+                DeviceTransport::Bonjour { .. } => "Bonjour",
+                DeviceTransport::Manual { .. } => "Manual",
+            };
+            println!("{:<16} {:<30} {:<20}", transport, dev.display_name, addr_str);
         }
     }
+
     Ok(())
 }

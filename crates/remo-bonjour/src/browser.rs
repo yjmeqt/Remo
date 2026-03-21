@@ -60,6 +60,8 @@ pub struct ServiceBrowser {
 // pattern (tokio task + drop).
 #[allow(unsafe_code)]
 unsafe impl Send for ServiceBrowser {}
+// SAFETY: ServiceBrowser is only accessed from one context at a time
+// (the tokio event loop task or drop).
 #[allow(unsafe_code)]
 unsafe impl Sync for ServiceBrowser {}
 
@@ -195,9 +197,8 @@ unsafe extern "C" fn browse_callback(
         // SAFETY: reply_domain is a valid C string from dns_sd.
         let domain = unsafe { std::ffi::CStr::from_ptr(reply_domain) };
         let domain_owned = domain.to_owned();
-        let name_c = match CString::new(name.clone()) {
-            Ok(c) => c,
-            Err(_) => return,
+        let Ok(name_c) = CString::new(name.clone()) else {
+            return;
         };
 
         let resolve_ctx = Box::new(ResolveContext {

@@ -34,6 +34,10 @@ void remo_free_string(char* ptr);
 /// Caller must free with remo_free_string().
 char* remo_list_capabilities(void);
 
+/// Return the actual port the server is listening on.
+/// Returns 0 if the server has not started.
+uint16_t remo_get_port(void);
+
 #ifdef __cplusplus
 }
 #endif

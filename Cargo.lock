@@ -773,6 +773,7 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "futures",
+ "remo-bonjour",
  "remo-protocol",
  "remo-transport",
  "remo-usbmuxd",

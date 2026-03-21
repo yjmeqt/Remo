@@ -70,7 +70,7 @@ pub unsafe extern "C" fn remo_start(port: u16) {
         tokio::time::timeout(std::time::Duration::from_secs(2), port_rx)
             .await
             .ok()
-            .and_then(|r| r.ok())
+            .and_then(Result::ok)
     });
 
     if let Some(p) = actual_port {

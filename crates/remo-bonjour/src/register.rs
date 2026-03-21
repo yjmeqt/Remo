@@ -39,6 +39,8 @@ pub struct ServiceRegistration {
 // access it from the tokio task or on drop (never concurrently).
 #[allow(unsafe_code)]
 unsafe impl Send for ServiceRegistration {}
+// SAFETY: ServiceRegistration is only accessed from one context at a time
+// (the tokio event loop task or drop).
 #[allow(unsafe_code)]
 unsafe impl Sync for ServiceRegistration {}
 
