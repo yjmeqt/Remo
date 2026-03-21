@@ -1,6 +1,20 @@
 // swift-tools-version: 6.1
 
 import PackageDescription
+import Foundation
+
+// Set REMO_LOCAL=1 to use the monorepo source (for development).
+// Default: use the published remo-spm binary package.
+let useLocal = ProcessInfo.processInfo.environment["REMO_LOCAL"] != nil
+
+let remoDependency: Package.Dependency = useLocal
+    ? .package(path: "../../../swift/RemoSwift")
+    : .package(url: "https://github.com/yi-jiang-applovin/remo-spm.git", from: "0.1.0")
+
+let remoProduct: Target.Dependency = .product(
+    name: "RemoSwift",
+    package: useLocal ? "RemoSwift" : "remo-spm"
+)
 
 let package = Package(
     name: "RemoExampleFeature",
@@ -12,20 +26,16 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../../../swift/RemoSwift"),
+        remoDependency,
     ],
     targets: [
         .target(
             name: "RemoExampleFeature",
-            dependencies: [
-                .product(name: "RemoSwift", package: "RemoSwift"),
-            ]
+            dependencies: [remoProduct]
         ),
         .testTarget(
             name: "RemoExampleFeatureTests",
-            dependencies: [
-                "RemoExampleFeature"
-            ]
+            dependencies: ["RemoExampleFeature"]
         ),
     ]
 )
