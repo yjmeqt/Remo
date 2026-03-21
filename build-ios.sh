@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Build remo-sdk for iOS targets and package into an XCFramework.
-# Requires: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+# Requires: rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -19,8 +19,18 @@ cargo build -p remo-sdk --features ios --target aarch64-apple-ios $FLAGS
 echo "==> Building remo-sdk for aarch64-apple-ios-sim ($PROFILE)..."
 cargo build -p remo-sdk --features ios --target aarch64-apple-ios-sim $FLAGS
 
+echo "==> Building remo-sdk for x86_64-apple-ios ($PROFILE)..."
+cargo build -p remo-sdk --features ios --target x86_64-apple-ios $FLAGS
+
 DEVICE_LIB="target/aarch64-apple-ios/$PROFILE/libremo_sdk.a"
-SIM_LIB="target/aarch64-apple-ios-sim/$PROFILE/libremo_sdk.a"
+SIM_ARM_LIB="target/aarch64-apple-ios-sim/$PROFILE/libremo_sdk.a"
+SIM_X86_LIB="target/x86_64-apple-ios/$PROFILE/libremo_sdk.a"
+
+echo "==> Creating universal simulator library..."
+mkdir -p target/sim-universal
+SIM_LIB="target/sim-universal/libremo_sdk.a"
+lipo -create "$SIM_ARM_LIB" "$SIM_X86_LIB" -output "$SIM_LIB"
+
 HEADER="swift/RemoSwift/Sources/RemoSwift/include/remo.h"
 XCFRAMEWORK="swift/RemoSDK.xcframework"
 

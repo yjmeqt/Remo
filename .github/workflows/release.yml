@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build & Release XCFramework
+    runs-on: macos-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
+
+      - name: Install cbindgen
+        run: cargo install cbindgen
+
+      - name: Build XCFramework
+        run: ./build-ios.sh release
+
+      - name: Package XCFramework
+        run: |
+          cd swift
+          zip -r ../RemoSDK.xcframework.zip RemoSDK.xcframework
+
+      - name: Compute checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(swift package compute-checksum RemoSDK.xcframework.zip)
+          echo "checksum=${CHECKSUM}" >> "$GITHUB_OUTPUT"
+          echo "Checksum: ${CHECKSUM}"
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: RemoSDK.xcframework.zip
+          body: |
+            ## RemoSDK ${{ github.ref_name }}
+
+            ### Swift Package Manager
+
+            Via [remo-spm](https://github.com/yi-jiang-applovin/remo-spm):
+            ```swift
+            .package(url: "https://github.com/yi-jiang-applovin/remo-spm.git", from: "${{ steps.version.outputs.version }}")
+            ```
+
+            ### Checksums
+
+            | File | SHA-256 |
+            |------|---------|
+            | RemoSDK.xcframework.zip | `${{ steps.checksum.outputs.checksum }}` |
+          generate_release_notes: true
+
+      # Auto-update remo-spm with new URL + checksum and tag the release.
+      - name: Update remo-spm
+        env:
+          SPM_TOKEN: ${{ secrets.SPM_REPO_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ github.ref_name }}
+          CHECKSUM: ${{ steps.checksum.outputs.checksum }}
+        run: |
+          set -euo pipefail
+
+          RELEASE_URL="https://github.com/yi-jiang-applovin/Remo/releases/download/${TAG}/RemoSDK.xcframework.zip"
+
+          # Clone remo-spm
+          git clone "https://x-access-token:${SPM_TOKEN}@github.com/yi-jiang-applovin/remo-spm.git" /tmp/remo-spm
+          cd /tmp/remo-spm
+
+          # Update Package.swift — URL
+          sed -i '' "s|url: \"https://github.com/yi-jiang-applovin/Remo/releases/download/[^\"]*\"|url: \"${RELEASE_URL}\"|" \
+              Package.swift
+
+          # Update Package.swift — checksum
+          sed -i '' "s|checksum: \"[^\"]*\"|checksum: \"${CHECKSUM}\"|" \
+              Package.swift
+
+          # Sync Swift source
+          cp "$GITHUB_WORKSPACE/swift/RemoSwift/Sources/RemoSwift/Remo.swift" \
+             Sources/RemoSwift/Remo.swift
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to remo-spm, skipping."
+          else
+            git commit -m "Update to ${TAG}"
+            git tag "${VERSION}"
+            git push origin main
+            git push origin "${VERSION}"
+            echo "remo-spm updated and tagged ${VERSION}"
+          fi

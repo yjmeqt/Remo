@@ -31,11 +31,11 @@ jobs:
       - run: cargo test --workspace
 
   build-ios:
-    name: Build iOS (aarch64-apple-ios-sim)
+    name: Build iOS XCFramework
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios-sim
-      - run: cargo build -p remo-sdk --target aarch64-apple-ios-sim
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
+      - run: ./build-ios.sh release
