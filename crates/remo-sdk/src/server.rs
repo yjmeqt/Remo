@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use remo_protocol::{ErrorCode, Message, Request, Response};
 use remo_transport::{Connection, Listener};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, oneshot};
 use tracing::{error, info, warn};
 
 use crate::registry::CapabilityRegistry;
@@ -39,10 +39,21 @@ impl RemoServer {
     }
 
     /// Start accepting connections. Blocks until shutdown.
-    pub async fn run(&self) -> Result<(), remo_transport::TransportError> {
+    ///
+    /// If `port_tx` is provided, sends the actual bound port once listening.
+    /// This is essential when `port` is 0 (OS-assigned dynamic port).
+    pub async fn run(
+        &self,
+        port_tx: Option<oneshot::Sender<u16>>,
+    ) -> Result<(), remo_transport::TransportError> {
         let addr: SocketAddr = ([0, 0, 0, 0], self.port).into();
         let listener = Listener::bind(addr).await?;
-        info!(port = self.port, "remo server started");
+        let actual_port = listener.local_addr().port();
+        info!(port = actual_port, "remo server started");
+
+        if let Some(tx) = port_tx {
+            let _ = tx.send(actual_port);
+        }
 
         loop {
             let mut shutdown_rx = self.shutdown_tx.subscribe();

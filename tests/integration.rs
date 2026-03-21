@@ -48,7 +48,7 @@ async fn full_roundtrip() {
 
     // Spawn server in background.
     let server_handle = tokio::spawn(async move {
-        server.run().await.unwrap();
+        server.run(None).await.unwrap();
     });
 
     // Give the server a moment to start listening.
