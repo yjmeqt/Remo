@@ -14,7 +14,7 @@ env:
 jobs:
   release:
     name: Build & Release XCFramework
-    runs-on: macos-latest
+    runs-on: macos-26
     environment: production
     steps:
       - uses: actions/checkout@v4
