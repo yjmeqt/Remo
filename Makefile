@@ -1,4 +1,9 @@
-.PHONY: build check test cli ios clean fmt lint
+.PHONY: setup build check test cli ios clean fmt lint
+
+# First-time setup (run once after clone or worktree creation)
+setup:
+	git config core.hooksPath .githooks
+	@echo "Git hooks configured."
 
 # Build everything (macOS)
 build:

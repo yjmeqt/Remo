@@ -191,7 +191,10 @@ async fn cmd_devices() -> Result<()> {
                 DeviceTransport::Bonjour { .. } => "Bonjour",
                 DeviceTransport::Manual { .. } => "Manual",
             };
-            println!("{:<16} {:<30} {:<20}", transport, dev.display_name, addr_str);
+            println!(
+                "{:<16} {:<30} {:<20}",
+                transport, dev.display_name, addr_str
+            );
         }
     }
 

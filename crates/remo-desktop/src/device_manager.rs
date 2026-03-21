@@ -116,17 +116,13 @@ impl DeviceManager {
                         };
                         info!(device = %id, "USB device attached");
                         devices.insert(id.clone(), info.clone());
-                        let _ = event_tx
-                            .send(DeviceManagerEvent::DeviceAdded(info))
-                            .await;
+                        let _ = event_tx.send(DeviceManagerEvent::DeviceAdded(info)).await;
                     }
                     DeviceEvent::Detached { device_id } => {
                         let id = DeviceId::Usb(device_id);
                         info!(device = %id, "USB device detached");
                         devices.remove(&id);
-                        let _ = event_tx
-                            .send(DeviceManagerEvent::DeviceRemoved(id))
-                            .await;
+                        let _ = event_tx.send(DeviceManagerEvent::DeviceRemoved(id)).await;
                     }
                     DeviceEvent::Unknown(_) => {}
                 }
@@ -164,17 +160,13 @@ impl DeviceManager {
                             "Bonjour service found"
                         );
                         devices.insert(id.clone(), info.clone());
-                        let _ = event_tx
-                            .send(DeviceManagerEvent::DeviceAdded(info))
-                            .await;
+                        let _ = event_tx.send(DeviceManagerEvent::DeviceAdded(info)).await;
                     }
                     BrowseEvent::Lost { name } => {
                         let id = DeviceId::Bonjour(name);
                         info!(device = %id, "Bonjour service lost");
                         devices.remove(&id);
-                        let _ = event_tx
-                            .send(DeviceManagerEvent::DeviceRemoved(id))
-                            .await;
+                        let _ = event_tx.send(DeviceManagerEvent::DeviceRemoved(id)).await;
                     }
                 }
             }
@@ -211,9 +203,7 @@ impl DeviceManager {
                     .ok_or_else(|| format!("cannot resolve {host}:{port}"))?;
                 Ok(RpcClient::connect(addr, event_tx).await?)
             }
-            DeviceTransport::Manual { addr } => {
-                Ok(RpcClient::connect(*addr, event_tx).await?)
-            }
+            DeviceTransport::Manual { addr } => Ok(RpcClient::connect(*addr, event_tx).await?),
         }
     }
 

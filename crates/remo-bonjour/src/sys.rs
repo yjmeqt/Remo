@@ -108,11 +108,7 @@ extern "C" {
 
     pub fn DNSServiceRefDeallocate(sd_ref: DNSServiceRef);
 
-    pub fn TXTRecordCreate(
-        txt_record: *mut TXTRecordRef,
-        buffer_len: u16,
-        buffer: *mut c_void,
-    );
+    pub fn TXTRecordCreate(txt_record: *mut TXTRecordRef, buffer_len: u16, buffer: *mut c_void);
 
     pub fn TXTRecordSetValue(
         txt_record: *mut TXTRecordRef,

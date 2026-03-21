@@ -86,12 +86,8 @@ pub unsafe extern "C" fn remo_start(port: u16) {
         lock.actual_port = Some(p);
 
         let _rt_guard = lock.runtime.enter();
-        match remo_bonjour::ServiceRegistration::register(
-            remo_bonjour::SERVICE_TYPE,
-            p,
-            None,
-            None,
-        ) {
+        match remo_bonjour::ServiceRegistration::register(remo_bonjour::SERVICE_TYPE, p, None, None)
+        {
             Ok(reg) => {
                 lock.bonjour_reg = Some(reg);
                 info!(port = p, "bonjour advertisement started");
