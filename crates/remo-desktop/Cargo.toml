@@ -10,6 +10,7 @@ workspace = true
 remo-protocol = { path = "../remo-protocol" }
 remo-transport = { path = "../remo-transport" }
 remo-usbmuxd = { path = "../remo-usbmuxd" }
+remo-bonjour = { path = "../remo-bonjour" }
 tokio.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
