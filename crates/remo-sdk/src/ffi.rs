@@ -22,7 +22,7 @@ struct RemoGlobal {
     registry: CapabilityRegistry,
     shutdown_tx: Option<broadcast::Sender<()>>,
     actual_port: Option<u16>,
-    _bonjour_reg: Option<remo_bonjour::ServiceRegistration>,
+    bonjour_reg: Option<remo_bonjour::ServiceRegistration>,
 }
 
 static GLOBAL: OnceLock<std::sync::Mutex<RemoGlobal>> = OnceLock::new();
@@ -35,7 +35,7 @@ fn global() -> &'static std::sync::Mutex<RemoGlobal> {
             registry: CapabilityRegistry::new(),
             shutdown_tx: None,
             actual_port: None,
-            _bonjour_reg: None,
+            bonjour_reg: None,
         })
     })
 }
@@ -51,27 +51,36 @@ pub unsafe extern "C" fn remo_start(port: u16) {
         .try_init();
 
     let g = global();
-    let mut lock = g.lock().unwrap();
 
-    let registry = lock.registry.clone();
-    let server = RemoServer::new(registry, port);
-    lock.shutdown_tx = Some(server.shutdown_handle());
+    let (port_rx, rt_handle) = {
+        let mut lock = g.lock().unwrap();
 
-    let (port_tx, port_rx) = tokio::sync::oneshot::channel();
+        let registry = lock.registry.clone();
+        let server = RemoServer::new(registry, port);
+        lock.shutdown_tx = Some(server.shutdown_handle());
 
-    lock.runtime.spawn(async move {
-        if let Err(e) = server.run(Some(port_tx)).await {
-            tracing::error!("remo server error: {e}");
-        }
-    });
+        let (port_tx, port_rx) = tokio::sync::oneshot::channel();
+        let rt_handle = lock.runtime.handle().clone();
 
-    // Wait for the server to bind and report the actual port.
-    let actual_port = lock.runtime.block_on(async {
+        lock.runtime.spawn(async move {
+            if let Err(e) = server.run(Some(port_tx)).await {
+                tracing::error!("remo server error: {e}");
+            }
+        });
+
+        (port_rx, rt_handle)
+    }; // lock released here
+
+    // Wait for the server to bind — no lock held, so other FFI calls won't deadlock.
+    let actual_port = rt_handle.block_on(async {
         tokio::time::timeout(std::time::Duration::from_secs(2), port_rx)
             .await
             .ok()
             .and_then(Result::ok)
     });
+
+    // Re-acquire lock to store results.
+    let mut lock = g.lock().unwrap();
 
     if let Some(p) = actual_port {
         lock.actual_port = Some(p);
@@ -84,7 +93,7 @@ pub unsafe extern "C" fn remo_start(port: u16) {
             None,
         ) {
             Ok(reg) => {
-                lock._bonjour_reg = Some(reg);
+                lock.bonjour_reg = Some(reg);
                 info!(port = p, "bonjour advertisement started");
             }
             Err(e) => {
@@ -103,7 +112,7 @@ pub extern "C" fn remo_stop() {
     let g = global();
     let mut lock = g.lock().unwrap();
     // Drop Bonjour registration first (de-advertises the service).
-    lock._bonjour_reg.take();
+    lock.bonjour_reg.take();
     if let Some(tx) = lock.shutdown_tx.take() {
         let _ = tx.send(());
     }

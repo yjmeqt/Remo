@@ -10,6 +10,9 @@ pub enum BonjourError {
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("TXT record value too long ({0} bytes, max 255)")]
+    ValueTooLong(usize),
 }
 
 impl BonjourError {

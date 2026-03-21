@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn full_roundtrip() {
-    // 1. Set up the registry with a test capability.
+    // 1. Set up the registry with test capabilities.
     let registry = CapabilityRegistry::new();
     registry.register_sync("echo", |params| {
         Ok(serde_json::json!({ "echoed": params }))
@@ -22,37 +22,20 @@ async fn full_roundtrip() {
         Ok(serde_json::json!({ "sum": a + b }))
     });
 
-    // 2. Start the server on a random port.
-    // Use port 0 to let the OS pick an available port.
+    // 2. Start the server on port 0 (OS picks) and get the actual port via oneshot.
     let server = RemoServer::new(registry, 0);
+    let (port_tx, port_rx) = tokio::sync::oneshot::channel();
 
-    // We need a real port, so bind a listener first to get one.
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    drop(listener); // Release it so the server can bind.
-
-    let server = RemoServer::new(CapabilityRegistry::new(), addr.port());
-    // Re-register since we created a new server.
-    // Actually, let's just build it properly:
-    let registry = CapabilityRegistry::new();
-    registry.register_sync("echo", |params| {
-        Ok(serde_json::json!({ "echoed": params }))
-    });
-    registry.register_sync("add", |params| {
-        let a = params["a"].as_i64().unwrap_or(0);
-        let b = params["b"].as_i64().unwrap_or(0);
-        Ok(serde_json::json!({ "sum": a + b }))
-    });
-
-    let server = RemoServer::new(registry, addr.port());
-
-    // Spawn server in background.
     let server_handle = tokio::spawn(async move {
-        server.run(None).await.unwrap();
+        server.run(Some(port_tx)).await.unwrap();
     });
 
-    // Give the server a moment to start listening.
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    let actual_port = tokio::time::timeout(Duration::from_secs(2), port_rx)
+        .await
+        .expect("server did not report port in time")
+        .expect("port sender dropped");
+
+    let addr: SocketAddr = ([127, 0, 0, 1], actual_port).into();
 
     // 3. Connect with RPC client.
     let (event_tx, _event_rx) = mpsc::channel(16);

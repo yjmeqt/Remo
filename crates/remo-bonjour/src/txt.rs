@@ -27,7 +27,8 @@ impl TxtRecord {
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), BonjourError> {
         let key_c = CString::new(key)?;
         let value_bytes = value.as_bytes();
-        let len = u8::try_from(value_bytes.len()).unwrap_or(255);
+        let len = u8::try_from(value_bytes.len())
+            .map_err(|_| BonjourError::ValueTooLong(value_bytes.len()))?;
 
         // SAFETY: key_c is a valid C string; value_bytes is valid for len bytes.
         #[allow(unsafe_code)]

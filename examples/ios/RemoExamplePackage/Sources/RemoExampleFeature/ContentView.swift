@@ -116,7 +116,7 @@ public func setupRemo(store: AppStore) {
     logged("counter.increment") { params in
         let amount = params["amount"] as? Int ?? 1
         DispatchQueue.main.async { store.counter += amount }
-        return ["status": "ok", "counter": store.counter + amount]
+        return ["status": "ok", "amount": amount]
     }
 
     // -- UI effect capabilities -----------------------------------------------
@@ -165,7 +165,7 @@ public func setupRemo(store: AppStore) {
         DispatchQueue.main.async {
             withAnimation { store.items.append(name) }
         }
-        return ["status": "ok", "count": store.items.count + 1]
+        return ["status": "ok", "name": name]
     }
 
     logged("items.remove") { params in
@@ -177,7 +177,7 @@ public func setupRemo(store: AppStore) {
                 }
             }
         }
-        return ["status": "ok", "count": max(0, store.items.count - 1)]
+        return ["status": "ok", "name": name]
     }
 
     logged("items.clear") { _ in

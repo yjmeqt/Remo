@@ -4,25 +4,12 @@ use std::os::fd::BorrowedFd;
 use tokio::io::unix::AsyncFd;
 use tokio::io::Interest;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::error::BonjourError;
 use crate::sys;
-
-/// Wrapper making `DNSServiceRef` transferable across threads.
-/// Stores as `usize` so no raw-pointer auto-trait issues arise.
-#[derive(Clone, Copy)]
-struct SendableRef(usize);
-
-impl SendableRef {
-    fn new(ptr: sys::DNSServiceRef) -> Self {
-        Self(ptr as usize)
-    }
-
-    fn ptr(self) -> sys::DNSServiceRef {
-        self.0 as sys::DNSServiceRef
-    }
-}
+use crate::SendableRef;
 
 /// Event emitted when a Bonjour service is found or lost.
 #[derive(Debug, Clone)]
@@ -52,12 +39,15 @@ impl ServiceInfo {
 }
 
 /// Browses the local network for Bonjour services of a given type.
+#[must_use = "dropping a ServiceBrowser immediately stops discovery"]
 pub struct ServiceBrowser {
     sd_ref: sys::DNSServiceRef,
+    ctx_ptr: *mut BrowseContext,
+    event_loop: Option<JoinHandle<()>>,
 }
 
 // SAFETY: Same rationale as ServiceRegistration — single-threaded access
-// pattern (tokio task + drop).
+// pattern (tokio task + drop). ctx_ptr is only reclaimed after abort.
 #[allow(unsafe_code)]
 unsafe impl Send for ServiceBrowser {}
 // SAFETY: ServiceBrowser is only accessed from one context at a time
@@ -82,12 +72,12 @@ impl ServiceBrowser {
             event_tx,
             service_type: reg_type.clone(),
         });
-        let ctx_ptr = Box::into_raw(ctx) as *mut std::ffi::c_void;
+        let ctx_ptr = Box::into_raw(ctx);
 
         let mut sd_ref: sys::DNSServiceRef = std::ptr::null_mut();
 
         // SAFETY: reg_type is a valid C string; sd_ref is an out-pointer.
-        // ctx_ptr is a Box we intentionally leak; it lives as long as the browser.
+        // ctx_ptr is a Box we intentionally leak; reclaimed in Drop.
         let err = unsafe {
             sys::DNSServiceBrowse(
                 &mut sd_ref,
@@ -96,65 +86,79 @@ impl ServiceBrowser {
                 reg_type.as_ptr(),
                 std::ptr::null(), // default domain
                 browse_callback,
-                ctx_ptr,
+                ctx_ptr as *mut std::ffi::c_void,
             )
         };
         BonjourError::from_code(err)?;
 
         info!(service_type, "bonjour browse started");
 
-        let browser = Self { sd_ref };
-        browser.spawn_event_loop();
+        let event_loop = spawn_event_loop(sd_ref);
+
+        let browser = Self {
+            sd_ref,
+            ctx_ptr,
+            event_loop: Some(event_loop),
+        };
 
         Ok((browser, event_rx))
     }
+}
 
-    #[allow(unsafe_code)]
-    fn spawn_event_loop(&self) {
-        let sendable = SendableRef::new(self.sd_ref);
+/// Spawn a tokio task that processes dns_sd events on the socket.
+#[allow(unsafe_code)]
+fn spawn_event_loop(sd_ref: sys::DNSServiceRef) -> JoinHandle<()> {
+    let sendable = SendableRef::new(sd_ref);
 
-        // SAFETY: DNSServiceRefSockFD returns a valid fd.
-        let fd = unsafe { sys::DNSServiceRefSockFD(sendable.ptr()) };
+    // SAFETY: DNSServiceRefSockFD returns a valid fd.
+    let fd = unsafe { sys::DNSServiceRefSockFD(sendable.ptr()) };
 
-        tokio::spawn(async move {
-            // SAFETY: fd is valid for the lifetime of sd_ref.
-            let async_fd = match unsafe {
-                AsyncFd::with_interest(BorrowedFd::borrow_raw(fd), Interest::READABLE)
-            } {
-                Ok(afd) => afd,
-                Err(e) => {
-                    error!("failed to create AsyncFd for bonjour browser: {e}");
-                    return;
-                }
-            };
+    tokio::spawn(async move {
+        // SAFETY: fd is valid for the lifetime of sd_ref.
+        let async_fd = match unsafe {
+            AsyncFd::with_interest(BorrowedFd::borrow_raw(fd), Interest::READABLE)
+        } {
+            Ok(afd) => afd,
+            Err(e) => {
+                error!("failed to create AsyncFd for bonjour browser: {e}");
+                return;
+            }
+        };
 
-            loop {
-                match async_fd.readable().await {
-                    Ok(mut guard) => {
-                        // SAFETY: sendable.ptr() is valid; socket is readable.
-                        let err = unsafe { sys::DNSServiceProcessResult(sendable.ptr()) };
-                        if err != sys::kDNSServiceErr_NoError {
-                            error!(err, "browser DNSServiceProcessResult failed");
-                            break;
-                        }
-                        guard.clear_ready();
-                    }
-                    Err(e) => {
-                        debug!("bonjour browser fd error: {e}");
+        loop {
+            match async_fd.readable().await {
+                Ok(mut guard) => {
+                    // SAFETY: sendable.ptr() is valid; socket is readable.
+                    let err = unsafe { sys::DNSServiceProcessResult(sendable.ptr()) };
+                    if err != sys::kDNSServiceErr_NoError {
+                        error!(err, "browser DNSServiceProcessResult failed");
                         break;
                     }
+                    guard.clear_ready();
+                }
+                Err(e) => {
+                    debug!("bonjour browser fd error: {e}");
+                    break;
                 }
             }
-        });
-    }
+        }
+    })
 }
 
 impl Drop for ServiceBrowser {
     #[allow(unsafe_code)]
     fn drop(&mut self) {
+        if let Some(handle) = self.event_loop.take() {
+            handle.abort();
+        }
         if !self.sd_ref.is_null() {
-            // SAFETY: we own sd_ref.
+            // SAFETY: event loop is aborted above, so no concurrent access.
             unsafe { sys::DNSServiceRefDeallocate(self.sd_ref) };
+        }
+        if !self.ctx_ptr.is_null() {
+            // SAFETY: ctx_ptr was created via Box::into_raw in browse().
+            // Callbacks only borrow it; we own it.
+            unsafe { drop(Box::from_raw(self.ctx_ptr)) };
         }
     }
 }
@@ -181,7 +185,7 @@ unsafe extern "C" fn browse_callback(
     }
 
     // SAFETY: context is a valid BrowseContext pointer that outlives this callback
-    // (owned by the ServiceBrowser via Box::into_raw).
+    // (owned by the ServiceBrowser, reclaimed in Drop).
     let ctx = unsafe { &*(context as *const BrowseContext) };
 
     // SAFETY: service_name is a valid C string from dns_sd.
