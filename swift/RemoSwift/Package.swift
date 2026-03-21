@@ -13,6 +13,9 @@ let package = Package(
             name: "CRemo",
             path: "../RemoSDK.xcframework"
         ),
+        // CRemo is imported only in DEBUG builds (#if DEBUG in Remo.swift).
+        // SPM still requires the binary for dependency resolution,
+        // but unreferenced symbols are stripped by the linker in Release.
         .target(
             name: "RemoSwift",
             dependencies: ["CRemo"],

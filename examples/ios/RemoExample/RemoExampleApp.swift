@@ -10,7 +10,9 @@ struct RemoExampleApp: App {
             ContentView()
                 .environment(store)
                 .onAppear {
+                    #if DEBUG
                     setupRemo(store: store)
+                    #endif
                 }
         }
     }

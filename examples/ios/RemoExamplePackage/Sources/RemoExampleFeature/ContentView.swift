@@ -71,8 +71,6 @@ public func setupRemo(store: AppStore) {
         }
         return ["status": "ok", "counter": store.counter + (params["amount"] as? Int ?? 1)]
     }
-
-    Remo.start()
 }
 
 // MARK: - Views
@@ -169,6 +167,7 @@ struct SettingsPage: View {
                     TextField("Username", text: $s.username)
                 }
 
+                #if DEBUG
                 Section("Debug") {
                     LabeledContent("Port", value: "\(Remo.defaultPort)")
                     LabeledContent("Capabilities") {
@@ -176,6 +175,7 @@ struct SettingsPage: View {
                             .font(.caption)
                     }
                 }
+                #endif
             }
             .navigationTitle("Settings")
         }

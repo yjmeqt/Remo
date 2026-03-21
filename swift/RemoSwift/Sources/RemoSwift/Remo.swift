@@ -1,9 +1,15 @@
 import Foundation
-import CRemo
 
 // MARK: - Public API
 
+#if DEBUG
+
+import CRemo
+
 /// Remo: remote control bridge for iOS apps.
+///
+/// In Release builds, all methods are no-ops. Remo is a debug-only tool and
+/// must never run in production — it opens an unauthenticated TCP port.
 ///
 /// Usage:
 /// ```swift
@@ -15,6 +21,7 @@ import CRemo
 /// Remo.start()
 /// ```
 public final class Remo {
+    private init() {}
 
     /// Default port the Remo server listens on.
     public static let defaultPort: UInt16 = 9930
@@ -91,3 +98,19 @@ private let swiftCapabilityTrampoline: remo_capability_callback = { context, par
 
     return strdup(resultString)
 }
+
+#else
+
+// Release build: empty stubs so call sites compile but do nothing.
+// The Rust static library symbols are never referenced at runtime.
+public final class Remo {
+    private init() {}
+
+    public static let defaultPort: UInt16 = 9930
+    public static func start(port: UInt16 = defaultPort) {}
+    public static func stop() {}
+    public static func register(_ name: String, handler: @escaping ([String: Any]) -> [String: Any]) {}
+    public static func listCapabilities() -> [String] { [] }
+}
+
+#endif
