@@ -34,15 +34,6 @@ lipo -create "$SIM_ARM_LIB" "$SIM_X86_LIB" -output "$SIM_LIB"
 HEADER="swift/RemoSwift/Sources/RemoSwift/include/remo.h"
 XCFRAMEWORK="swift/RemoSDK.xcframework"
 
-# Generate C header via cbindgen (if installed)
-if command -v cbindgen &> /dev/null; then
-    echo "==> Generating C header..."
-    cbindgen --crate remo-sdk --output "$HEADER" --lang c
-    echo "  Header written to $HEADER"
-else
-    echo "  [skip] cbindgen not found, using existing header"
-fi
-
 # Create XCFramework
 echo "==> Creating XCFramework..."
 rm -rf "$XCFRAMEWORK"

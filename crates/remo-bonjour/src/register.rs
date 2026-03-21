@@ -109,15 +109,15 @@ fn spawn_event_loop(sd_ref: sys::DNSServiceRef) -> JoinHandle<()> {
     tokio::spawn(async move {
         // SAFETY: fd is valid for the lifetime of sd_ref; we borrow it
         // without taking ownership (the DNSServiceRef owns the socket).
-        let async_fd = match unsafe {
-            AsyncFd::with_interest(BorrowedFd::borrow_raw(fd), Interest::READABLE)
-        } {
-            Ok(afd) => afd,
-            Err(e) => {
-                error!("failed to create AsyncFd for bonjour: {e}");
-                return;
-            }
-        };
+        let async_fd =
+            match unsafe { AsyncFd::with_interest(BorrowedFd::borrow_raw(fd), Interest::READABLE) }
+            {
+                Ok(afd) => afd,
+                Err(e) => {
+                    error!("failed to create AsyncFd for bonjour: {e}");
+                    return;
+                }
+            };
 
         loop {
             match async_fd.readable().await {

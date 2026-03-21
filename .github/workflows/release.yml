@@ -14,7 +14,7 @@ env:
 jobs:
   release:
     name: Build & Release XCFramework
-    runs-on: macos-latest
+    runs-on: macos-26
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -22,9 +22,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
-
-      - name: Install cbindgen
-        run: cargo install cbindgen
 
       - name: Build XCFramework
         run: ./build-ios.sh release

@@ -12,7 +12,7 @@ env:
 jobs:
   check:
     name: Check & Lint
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -24,18 +24,28 @@ jobs:
 
   test:
     name: Test
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace
 
   build-ios:
-    name: Build iOS XCFramework
-    runs-on: macos-latest
+    name: Build iOS XCFramework + Swift Check
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
-      - run: ./build-ios.sh release
+      - name: Build XCFramework
+        run: ./build-ios.sh release
+      - name: Verify Swift integration
+        env:
+          REMO_LOCAL: "1"
+        run: |
+          xcodebuild test \
+            -workspace examples/ios/RemoExample.xcworkspace \
+            -scheme RemoExample \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -skipPackagePluginValidation

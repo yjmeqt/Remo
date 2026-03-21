@@ -507,7 +507,6 @@ struct SettingsPage: View {
                         command: "remo call -a 127.0.0.1:\(Remo.port) ui.setAccentColor '{\"color\": \"purple\"}'"
                     )
                 }
-                #endif
             }
             .navigationTitle("Settings")
         }
