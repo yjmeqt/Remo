@@ -8,6 +8,7 @@ members = [
     "crates/remo-objc",
     "crates/remo-desktop",
     "crates/remo-cli",
+    "crates/remo-bonjour",
 ]
 
 [workspace.lints.clippy]
