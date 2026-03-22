@@ -2,7 +2,7 @@
 # To publish: pod trunk push RemoSwift.podspec --allow-warnings
 Pod::Spec.new do |s|
   s.name         = 'RemoSwift'
-  s.version      = '0.1.0'
+  s.version      = '0.3.0'
   s.summary      = 'Remote control bridge for iOS apps — inspect and mutate state from macOS in real time.'
   s.description  = <<-DESC
     Remo is a lightweight bridge between macOS and iOS. Embed the SDK in your app

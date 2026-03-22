@@ -174,7 +174,7 @@ cargo build -p remo-cli              # Build the CLI
 
 ### Project Status
 
-**v0.3.0-dev** — See [SPEC.md](SPEC.md) for the full architecture.
+**v0.3.0** — See [SPEC.md](SPEC.md) for the full architecture.
 
 #### Roadmap
 - [ ] Auto-reconnection on disconnect
