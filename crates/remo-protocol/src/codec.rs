@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::message::{Message, MessageId};
+use crate::message::{Message, MessageId, StreamFrame};
 
 /// Length-prefixed codec with a type byte discriminator.
 ///
@@ -20,11 +20,12 @@ use crate::message::{Message, MessageId};
 #[derive(Debug, Default, Clone)]
 pub struct RemoCodec;
 
-/// Maximum message size: 16 MiB. Anything larger is rejected.
-const MAX_FRAME_SIZE: u32 = 16 * 1024 * 1024;
+/// Maximum message size: 64 MiB. Anything larger is rejected.
+const MAX_FRAME_SIZE: u32 = 64 * 1024 * 1024;
 
 const FRAME_TYPE_JSON: u8 = 0x00;
 const FRAME_TYPE_BINARY: u8 = 0x01;
+const FRAME_TYPE_STREAM: u8 = 0x02;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CodecError {
@@ -113,6 +114,35 @@ impl Decoder for RemoCodec {
                     crate::message::BinaryResponse::new(id, metadata, data),
                 )))
             }
+            FRAME_TYPE_STREAM => {
+                // Minimum: stream_id(4) + seq(4) + pts_us(8) + flags(1) = 17 bytes
+                if body_len < 17 {
+                    return Err(CodecError::MalformedBinaryFrame(
+                        "stream frame too short".into(),
+                    ));
+                }
+                let stream_id = u32::from_be_bytes([src[0], src[1], src[2], src[3]]);
+                let sequence = u32::from_be_bytes([src[4], src[5], src[6], src[7]]);
+                let timestamp_us = u64::from_be_bytes([
+                    src[8], src[9], src[10], src[11], src[12], src[13], src[14], src[15],
+                ]);
+                let flags = src[16];
+                src.advance(17);
+
+                let data = if body_len > 17 {
+                    src.split_to(body_len - 17).to_vec()
+                } else {
+                    vec![]
+                };
+
+                Ok(Some(Message::StreamFrame(StreamFrame {
+                    stream_id,
+                    sequence,
+                    timestamp_us,
+                    flags,
+                    data,
+                })))
+            }
             other => Err(CodecError::UnknownFrameType(other)),
         }
     }
@@ -145,6 +175,25 @@ impl Encoder<Message> for RemoCodec {
                 dst.extend_from_slice(&br.data);
                 Ok(())
             }
+            Message::StreamFrame(frame) => {
+                // Wire layout after type byte: [stream_id(4)][seq(4)][pts_us(8)][flags(1)][data...]
+                let body_len = 4 + 4 + 8 + 1 + frame.data.len();
+                let frame_len = (1 + body_len) as u32; // +1 for type byte
+
+                if frame_len > MAX_FRAME_SIZE {
+                    return Err(CodecError::FrameTooLarge(frame_len));
+                }
+
+                dst.reserve(4 + 1 + body_len);
+                dst.put_u32(frame_len);
+                dst.put_u8(FRAME_TYPE_STREAM);
+                dst.put_u32(frame.stream_id);
+                dst.put_u32(frame.sequence);
+                dst.put_u64(frame.timestamp_us);
+                dst.put_u8(frame.flags);
+                dst.extend_from_slice(&frame.data);
+                Ok(())
+            }
             _ => {
                 let json = serde_json::to_vec(&item)?;
                 let payload_len = 1 + json.len();
@@ -167,7 +216,7 @@ impl Encoder<Message> for RemoCodec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::Request;
+    use crate::message::{stream_flags, Request, StreamFrame};
 
     #[test]
     fn roundtrip_encode_decode() {
@@ -217,8 +266,8 @@ mod tests {
     fn rejects_oversized_frame() {
         let mut codec = RemoCodec;
         let mut buf = BytesMut::new();
-        // Write a length header claiming 20 MiB.
-        buf.put_u32(20 * 1024 * 1024);
+        // Write a length header claiming 65 MiB (over the 64 MiB limit).
+        buf.put_u32(65 * 1024 * 1024);
         buf.extend_from_slice(b"{}");
 
         assert!(codec.decode(&mut buf).is_err());
@@ -283,5 +332,93 @@ mod tests {
         assert!(codec.decode(&mut partial).unwrap().is_none());
         partial.extend_from_slice(&buf);
         assert!(codec.decode(&mut partial).unwrap().is_some());
+    }
+
+    #[test]
+    fn roundtrip_stream_frame() {
+        let mut codec = RemoCodec;
+        let mut buf = BytesMut::new();
+
+        let frame = StreamFrame {
+            stream_id: 1,
+            sequence: 42,
+            timestamp_us: 1_000_000,
+            flags: stream_flags::KEYFRAME | stream_flags::STREAM_START,
+            data: vec![0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1e],
+        };
+        let msg = Message::StreamFrame(frame);
+
+        codec.encode(msg, &mut buf).unwrap();
+
+        // Verify type byte is 0x02
+        assert_eq!(buf[4], 0x02);
+
+        let decoded = codec.decode(&mut buf).unwrap().unwrap();
+        match decoded {
+            Message::StreamFrame(f) => {
+                assert_eq!(f.stream_id, 1);
+                assert_eq!(f.sequence, 42);
+                assert_eq!(f.timestamp_us, 1_000_000);
+                assert_eq!(f.flags, stream_flags::KEYFRAME | stream_flags::STREAM_START);
+                assert_eq!(f.data, vec![0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1e]);
+            }
+            other => panic!("expected StreamFrame, got {other:?}"),
+        }
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn stream_frame_partial_read() {
+        let mut codec = RemoCodec;
+        let mut buf = BytesMut::new();
+
+        let frame = StreamFrame {
+            stream_id: 1,
+            sequence: 0,
+            timestamp_us: 0,
+            flags: 0,
+            data: vec![0xAB; 100],
+        };
+        codec.encode(Message::StreamFrame(frame), &mut buf).unwrap();
+
+        let full = buf.split();
+        let half = full.len() / 2;
+        buf.extend_from_slice(&full[..half]);
+        assert!(codec.decode(&mut buf).unwrap().is_none());
+
+        buf.extend_from_slice(&full[half..]);
+        let decoded = codec.decode(&mut buf).unwrap().unwrap();
+        match decoded {
+            Message::StreamFrame(f) => {
+                assert_eq!(f.data.len(), 100);
+                assert!(f.data.iter().all(|&b| b == 0xAB));
+            }
+            other => panic!("expected StreamFrame, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn stream_frame_empty_data() {
+        let mut codec = RemoCodec;
+        let mut buf = BytesMut::new();
+
+        let frame = StreamFrame {
+            stream_id: 5,
+            sequence: 0,
+            timestamp_us: 0,
+            flags: stream_flags::STREAM_END,
+            data: vec![],
+        };
+        codec.encode(Message::StreamFrame(frame), &mut buf).unwrap();
+
+        let decoded = codec.decode(&mut buf).unwrap().unwrap();
+        match decoded {
+            Message::StreamFrame(f) => {
+                assert_eq!(f.stream_id, 5);
+                assert_eq!(f.flags, stream_flags::STREAM_END);
+                assert!(f.data.is_empty());
+            }
+            other => panic!("expected StreamFrame, got {other:?}"),
+        }
     }
 }
