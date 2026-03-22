@@ -120,19 +120,21 @@ Remo.register("myFeature.toggle") { params in
 | `remo-bonjour` | Bonjour/mDNS service registration and discovery |
 | `remo-sdk` | iOS embedded server + capability registry + C FFI |
 | `remo-objc` | ObjC runtime bridge via `objc2` (view tree, screenshot, device info) |
-| `remo-desktop` | macOS library — device manager + RPC client |
-| `remo-cli` | CLI tool: `devices`, `call`, `list`, `watch`, `tree`, `screenshot`, `info` |
+| `remo-desktop` | macOS library — device manager, RPC client, web dashboard, fMP4 muxer |
+| `remo-cli` | CLI tool: `devices`, `dashboard`, `call`, `list`, `watch`, `tree`, `screenshot`, `info`, `mirror` |
 
 ## CLI Commands
 
 ```bash
 remo devices                              # Auto-discover devices (USB + Bonjour)
+remo dashboard                            # Web dashboard with multi-device UI
 remo call -a <addr> <capability> [params] # Invoke a capability
 remo list -a <addr>                       # List registered capabilities
 remo watch -a <addr>                      # Stream events from device
 remo tree -a <addr>                       # Dump view hierarchy
 remo screenshot -a <addr> -o out.jpg      # Take a screenshot
 remo info -a <addr>                       # Show device & app info
+remo mirror -a <addr> --web               # Live screen mirror (H.264 → fMP4)
 ```
 
 ## Built-in Capabilities
@@ -147,10 +149,30 @@ These are registered automatically by the SDK — no setup required:
 | `__screenshot` | Capture the screen (JPEG/PNG, configurable quality) |
 | `__device_info` | Device model, OS version, screen dimensions |
 | `__app_info` | Bundle ID, version, build number, display name |
+| `__start_mirror` | Start H.264 screen mirror stream |
+| `__stop_mirror` | Stop mirror stream |
+
+## Web Dashboard
+
+The web dashboard provides a browser-based UI for controlling iOS devices:
+
+```bash
+remo dashboard                    # Opens browser at http://127.0.0.1:3030
+remo dashboard --port 8080        # Custom port
+remo dashboard --no-open          # Don't auto-open browser
+```
+
+Features:
+- **Multi-device discovery**: Auto-discovers devices via USB + Bonjour — no `--addr` needed
+- **Device selector**: Switch between real devices and simulators from a dropdown
+- **Live video streaming**: H.264 screen mirror via WebSocket + MSE/fMP4
+- **Screenshots**: Capture and view full-screen with overlay preview
+- **Capabilities panel**: Browse and invoke registered capabilities
+- **Terminal**: Interactive command input with log output
 
 ## Project Status
 
-**v0.2.0** — Full end-to-end RPC, Bonjour auto-discovery, multi-simulator support, built-in introspection (view tree, screenshot, device/app info), debug-only SDK, CI/CD pipeline with automated release. See [SPEC.md](SPEC.md) for the full architecture.
+**v0.3.0-dev** — Video streaming, web dashboard, multi-device support. See [SPEC.md](SPEC.md) for the full architecture.
 
 ### What works now
 - Full RPC round-trip: CLI → TCP → iOS SDK → capability handler → response
@@ -164,9 +186,10 @@ These are registered automatically by the SDK — no setup required:
 - Enhanced example app (counter, items, activity log, toast, confetti, accent color)
 - CI pipeline (check, lint, test, iOS build + Swift integration)
 - Automated release pipeline (XCFramework → GitHub Release → SPM distribution)
+- **Live screen mirroring** (H.264 via VideoToolbox → fMP4 → MSE in browser)
+- **Web dashboard** with multi-device selector, video player, screenshot viewer, capability browser
 
 ### Roadmap
-- [ ] Event streaming (iOS → macOS push)
 - [ ] Auto-reconnection on disconnect
 - [ ] macOS GUI (SwiftUI device inspector)
 - [ ] View property modification (`__view_set`)
