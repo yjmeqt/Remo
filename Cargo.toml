@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    ".",
     "crates/remo-protocol",
     "crates/remo-transport",
     "crates/remo-usbmuxd",
@@ -77,3 +78,18 @@ dashmap = "6"
 
 # Encoding
 base64 = "0.22"
+
+[package]
+name = "remo-workspace"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dev-dependencies]
+remo-protocol = { path = "crates/remo-protocol" }
+remo-transport = { path = "crates/remo-transport" }
+remo-sdk = { path = "crates/remo-sdk" }
+remo-desktop = { path = "crates/remo-desktop" }
+tokio = { workspace = true }
+serde_json = { workspace = true }

@@ -813,7 +813,6 @@ dependencies = [
 name = "remo-sdk"
 version = "0.1.0"
 dependencies = [
- "base64",
  "dashmap",
  "futures",
  "remo-bonjour",
@@ -850,6 +849,18 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "remo-workspace"
+version = "0.1.0"
+dependencies = [
+ "remo-desktop",
+ "remo-protocol",
+ "remo-sdk",
+ "remo-transport",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

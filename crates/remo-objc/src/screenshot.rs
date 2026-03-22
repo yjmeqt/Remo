@@ -19,6 +19,7 @@ mod apple {
     use super::*;
     use objc2::runtime::AnyObject;
     use objc2::{msg_send, MainThreadMarker};
+    use objc2_foundation::NSData;
     use objc2_ui_kit::UIApplication;
 
     type CGFloat = f64;
@@ -84,10 +85,10 @@ mod apple {
             return None;
         }
 
-        // NSData: get raw bytes via -[NSData bytes] and -[NSData length]
-        let ptr: *const u8 = msg_send![data, bytes];
-        let len: usize = msg_send![data, length];
-        let bytes = std::slice::from_raw_parts(ptr, len).to_vec();
+        // Cast raw pointer to typed NSData reference for safe method dispatch.
+        // This avoids objc2's debug-mode class verification panic on raw AnyObject.
+        let ns_data: &NSData = &*(data as *const NSData);
+        let bytes = ns_data.as_bytes_unchecked().to_vec();
 
         Some(ScreenshotResult {
             bytes,

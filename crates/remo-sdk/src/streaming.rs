@@ -83,8 +83,22 @@ impl MirrorSession {
 pub async fn run_mirror_loop(session: Arc<MirrorSession>, sender: StreamSender, fps: u32) {
     info!(stream_id = session.stream_id, fps, "starting mirror loop");
 
-    // SAFETY: run_on_main_sync ensures main-thread execution required by get_screen_info.
-    let info = remo_objc::run_on_main_sync(|| unsafe { remo_objc::get_screen_info() });
+    // SAFETY: get_screen_info requires UIKit main-thread execution.
+    // On UIKit (iOS) targets, use run_on_main_sync to dispatch to the main thread.
+    // On other Apple targets (macOS without UIKit), call directly — the stub returns None
+    // without any main-thread requirement, avoiding a GCD dispatch_sync_f deadlock in tests.
+    #[cfg(all(target_vendor = "apple", feature = "ios"))]
+    let info = {
+        tokio::task::spawn_blocking(|| {
+            remo_objc::run_on_main_sync(|| unsafe { remo_objc::get_screen_info() })
+        })
+        .await
+        .unwrap_or(None)
+    };
+    // SAFETY: On non-UIKit targets the stub implementation has no unsafe preconditions.
+    #[cfg(not(all(target_vendor = "apple", feature = "ios")))]
+    let info = unsafe { remo_objc::get_screen_info() };
+
     let Some(info) = info else {
         error!("failed to get screen info");
         return;
@@ -163,16 +177,23 @@ pub async fn run_mirror_loop(session: Arc<MirrorSession>, sender: StreamSender, 
         let h = info.height;
         let s = info.scale;
 
-        // SAFETY: run_on_main_sync ensures main-thread execution required by capture_frame_to_pixel_buffer.
+        // SAFETY: capture_frame_to_pixel_buffer requires UIKit main-thread execution.
+        // On UIKit (iOS) targets, dispatch via run_on_main_sync.
+        // On other Apple targets (macOS without UIKit), call directly — stub returns None.
+        #[cfg(all(target_vendor = "apple", feature = "ios"))]
         let pixel_buffer = remo_objc::run_on_main_sync(move || unsafe {
             remo_objc::capture_frame_to_pixel_buffer(w, h, s)
         });
+        // SAFETY: On non-UIKit targets the stub implementation has no unsafe preconditions.
+        #[cfg(not(all(target_vendor = "apple", feature = "ios")))]
+        let pixel_buffer = unsafe { remo_objc::capture_frame_to_pixel_buffer(w, h, s) };
 
         if let Some(pb) = pixel_buffer {
             // SAFETY: pb is a valid CVPixelBufferRef returned by capture_frame_to_pixel_buffer.
             if let Err(e) = unsafe { encoder.encode_frame(pb as *const _) } {
                 warn!("encode error: {e}");
             }
+            #[link(name = "CoreFoundation", kind = "framework")]
             extern "C" {
                 fn CFRelease(cf: *const std::ffi::c_void);
             }
