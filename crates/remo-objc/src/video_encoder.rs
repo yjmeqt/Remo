@@ -39,7 +39,7 @@ pub struct EncodedFrame {
 
 /// Bounded channel capacity for encoded frames.
 /// When full, non-keyframes are dropped (flow control).
-#[cfg(all(target_vendor = "apple", feature = "uikit"))]
+#[allow(dead_code)]
 const ENCODED_CHANNEL_CAPACITY: usize = 8;
 
 #[cfg(all(target_vendor = "apple", feature = "uikit"))]
@@ -236,6 +236,9 @@ mod apple {
             };
 
             if status != 0 {
+                // Reclaim the Arc we gave to VT via into_raw. Combined with
+                // `inner` (the original Arc) dropping at function exit, this
+                // brings the ref count to zero and frees the allocation.
                 unsafe { Arc::from_raw(inner_ptr as *const EncoderInner) };
                 return Err(format!("VTCompressionSessionCreate failed: {status}"));
             }
@@ -342,9 +345,10 @@ mod apple {
 
         /// Stop the encoder and release resources.
         pub fn stop(&self) {
-            self.inner.running.store(false, Ordering::Relaxed);
-            unsafe {
-                VTCompressionSessionInvalidate(self.session);
+            if self.inner.running.swap(false, Ordering::SeqCst) {
+                unsafe {
+                    VTCompressionSessionInvalidate(self.session);
+                }
             }
         }
     }
@@ -393,7 +397,10 @@ mod apple {
                 Err(mpsc::TrySendError::Full(dropped)) => {
                     // Flow control: drop non-keyframes when channel is full
                     if dropped.is_keyframe {
-                        // Never drop keyframes — block briefly if needed
+                        // Block the VT thread briefly. If the consumer is persistently slow,
+                        // this stalls frame production — acceptable since the alternative
+                        // (dropping keyframes) would leave the decoder unable to recover
+                        // until the next IDR interval.
                         let _ = inner.tx.send(dropped);
                     }
                     // else: non-keyframe dropped, acceptable
@@ -494,7 +501,7 @@ mod apple {
             return None;
         }
 
-        let annex_b = avcc_to_annex_b(&raw);
+        let annex_b = super::avcc_to_annex_b(&raw);
 
         let pts = CMSampleBufferGetPresentationTimeStamp(sample_buffer);
         let timestamp_us = if pts.timescale > 0 {
@@ -509,33 +516,6 @@ mod apple {
             is_keyframe,
             is_codec_config: false,
         })
-    }
-
-    /// Convert AVCC length-prefixed NAL units to Annex-B start code format.
-    pub fn avcc_to_annex_b(data: &[u8]) -> Vec<u8> {
-        let start_code: [u8; 4] = [0x00, 0x00, 0x00, 0x01];
-        let mut result = Vec::with_capacity(data.len());
-        let mut offset = 0;
-
-        while offset + 4 <= data.len() {
-            let nal_len = u32::from_be_bytes([
-                data[offset],
-                data[offset + 1],
-                data[offset + 2],
-                data[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            if offset + nal_len > data.len() {
-                break;
-            }
-
-            result.extend_from_slice(&start_code);
-            result.extend_from_slice(&data[offset..offset + nal_len]);
-            offset += nal_len;
-        }
-
-        result
     }
 }
 
@@ -567,35 +547,36 @@ mod apple {
 
         pub fn stop(&self) {}
     }
-
-    pub fn avcc_to_annex_b(data: &[u8]) -> Vec<u8> {
-        let start_code: [u8; 4] = [0x00, 0x00, 0x00, 0x01];
-        let mut result = Vec::with_capacity(data.len());
-        let mut offset = 0;
-
-        while offset + 4 <= data.len() {
-            let nal_len = u32::from_be_bytes([
-                data[offset],
-                data[offset + 1],
-                data[offset + 2],
-                data[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            if offset + nal_len > data.len() {
-                break;
-            }
-
-            result.extend_from_slice(&start_code);
-            result.extend_from_slice(&data[offset..offset + nal_len]);
-            offset += nal_len;
-        }
-
-        result
-    }
 }
 
-pub use apple::{avcc_to_annex_b, H264Encoder};
+pub use apple::H264Encoder;
+
+/// Convert AVCC length-prefixed NAL units to Annex-B start code format.
+pub fn avcc_to_annex_b(data: &[u8]) -> Vec<u8> {
+    let start_code: [u8; 4] = [0x00, 0x00, 0x00, 0x01];
+    let mut result = Vec::with_capacity(data.len());
+    let mut offset = 0;
+
+    while offset + 4 <= data.len() {
+        let nal_len = u32::from_be_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]) as usize;
+        offset += 4;
+
+        if offset + nal_len > data.len() {
+            break;
+        }
+
+        result.extend_from_slice(&start_code);
+        result.extend_from_slice(&data[offset..offset + nal_len]);
+        offset += nal_len;
+    }
+
+    result
+}
 
 #[cfg(test)]
 mod tests {
