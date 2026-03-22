@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use base64::Engine;
 use clap::{Parser, Subcommand};
-use remo_desktop::{DeviceManager, DeviceTransport, RpcClient};
+use remo_desktop::{DeviceManager, DeviceTransport, RpcClient, RpcResponse};
 use remo_protocol::ResponseResult;
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
@@ -149,9 +149,13 @@ async fn main() -> Result<()> {
                 .map(|d| format!("device:{d}"))
                 .unwrap_or_else(|| addr.to_string());
             println!("Calling '{capability}' on {target}...");
-            let response = client
+            let rpc_response = client
                 .call(&capability, params, Duration::from_secs(timeout))
                 .await?;
+            let response = match rpc_response {
+                RpcResponse::Json(r) => r,
+                RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
+            };
             let json = serde_json::to_string_pretty(&response)?;
             println!("{json}");
         }
@@ -159,13 +163,17 @@ async fn main() -> Result<()> {
             let (event_tx, _) = mpsc::channel(16);
             let client = connect(device, addr, event_tx).await?;
 
-            let response = client
+            let rpc_response = client
                 .call(
                     "__list_capabilities",
                     serde_json::json!({}),
                     Duration::from_secs(5),
                 )
                 .await?;
+            let response = match rpc_response {
+                RpcResponse::Json(r) => r,
+                RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
+            };
             let json = serde_json::to_string_pretty(&response)?;
             println!("{json}");
         }
@@ -288,9 +296,13 @@ async fn cmd_tree(addr: SocketAddr, device: Option<u32>, max_depth: Option<u64>)
         params["max_depth"] = serde_json::json!(d);
     }
 
-    let response = client
+    let rpc_response = client
         .call("__view_tree", params, Duration::from_secs(10))
         .await?;
+    let response = match rpc_response {
+        RpcResponse::Json(r) => r,
+        RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
+    };
 
     match response.result {
         ResponseResult::Ok { data } => {
@@ -362,24 +374,33 @@ async fn cmd_screenshot(
         )
         .await?;
 
-    match response.result {
-        ResponseResult::Ok { data } => {
-            let b64 = data["image"]
-                .as_str()
-                .ok_or_else(|| anyhow::anyhow!("no image data in response"))?;
-            let bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
-            let w = data["width"].as_f64().unwrap_or(0.0);
-            let h = data["height"].as_f64().unwrap_or(0.0);
-            let scale = data["scale"].as_f64().unwrap_or(1.0);
+    match response {
+        RpcResponse::Binary(br) => {
+            let w = br.metadata["width"].as_f64().unwrap_or(0.0);
+            let h = br.metadata["height"].as_f64().unwrap_or(0.0);
+            let scale = br.metadata["scale"].as_f64().unwrap_or(1.0);
 
-            std::fs::write(output, &bytes)?;
+            std::fs::write(output, &br.data)?;
             println!(
                 "Screenshot saved to {output} ({} bytes, {w:.0}x{h:.0} @{scale:.0}x)",
-                bytes.len()
+                br.data.len()
             );
         }
-        ResponseResult::Error { message, .. } => {
-            anyhow::bail!("screenshot failed: {message}");
+        RpcResponse::Json(resp) => {
+            // Fallback for older servers still sending base64
+            match resp.result {
+                ResponseResult::Ok { data } => {
+                    let b64 = data["image"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("no image data in response"))?;
+                    let bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
+                    std::fs::write(output, &bytes)?;
+                    println!("Screenshot saved to {output} ({} bytes)", bytes.len());
+                }
+                ResponseResult::Error { message, .. } => {
+                    anyhow::bail!("screenshot failed: {message}");
+                }
+            }
         }
     }
 
@@ -390,16 +411,24 @@ async fn cmd_info(addr: SocketAddr, device: Option<u32>) -> Result<()> {
     let (event_tx, _) = mpsc::channel(16);
     let client = connect(device, addr, event_tx).await?;
 
-    let dev_resp = client
+    let dev_rpc = client
         .call(
             "__device_info",
             serde_json::json!({}),
             Duration::from_secs(5),
         )
         .await?;
-    let app_resp = client
+    let dev_resp = match dev_rpc {
+        RpcResponse::Json(r) => r,
+        RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
+    };
+    let app_rpc = client
         .call("__app_info", serde_json::json!({}), Duration::from_secs(5))
         .await?;
+    let app_resp = match app_rpc {
+        RpcResponse::Json(r) => r,
+        RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
+    };
 
     println!("=== Device ===");
     if let ResponseResult::Ok { data } = &dev_resp.result {
