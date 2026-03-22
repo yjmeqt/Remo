@@ -71,8 +71,11 @@ pub enum ErrorCode {
     Internal,
     /// Request timed out.
     Timeout,
+    /// A mirror/stream session is already active for this connection.
     StreamAlreadyActive,
+    /// The operation was denied due to insufficient authorization.
     AuthorizationDenied,
+    /// Referenced recording session does not exist.
     RecordingNotFound,
 }
 
