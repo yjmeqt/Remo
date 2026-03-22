@@ -2,6 +2,9 @@
 pub mod ffi;
 pub mod registry;
 pub mod server;
+#[allow(unsafe_code)]
+mod streaming;
 
 pub use registry::CapabilityRegistry;
 pub use server::RemoServer;
+pub use streaming::{MirrorSession, StreamSender};
