@@ -24,6 +24,10 @@ pub enum Message {
     /// Serde skip: encoded/decoded manually by RemoCodec.
     #[serde(skip)]
     BinaryResponse(BinaryResponse),
+
+    /// Stream frame — not JSON-serialized, uses Type 0x02 wire encoding.
+    #[serde(skip)]
+    StreamFrame(StreamFrame),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +71,9 @@ pub enum ErrorCode {
     Internal,
     /// Request timed out.
     Timeout,
+    StreamAlreadyActive,
+    AuthorizationDenied,
+    RecordingNotFound,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,5 +142,48 @@ impl Event {
 impl BinaryResponse {
     pub fn new(id: MessageId, metadata: serde_json::Value, data: Vec<u8>) -> Self {
         Self { id, metadata, data }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stream frames (video / continuous binary data)
+// ---------------------------------------------------------------------------
+
+/// Flag bits for StreamFrame.
+pub mod stream_flags {
+    pub const KEYFRAME: u8 = 0x01;
+    pub const STREAM_START: u8 = 0x02;
+    pub const STREAM_END: u8 = 0x04;
+    pub const CODEC_CONFIG: u8 = 0x08;
+}
+
+/// A continuous-stream frame (Type 0x02 on the wire).
+///
+/// Unlike Request/Response, StreamFrames are NOT JSON-serialized.
+/// They use a compact binary layout for efficiency at high frame rates.
+#[derive(Debug, Clone)]
+pub struct StreamFrame {
+    pub stream_id: u32,
+    pub sequence: u32,
+    pub timestamp_us: u64,
+    pub flags: u8,
+    pub data: Vec<u8>,
+}
+
+impl StreamFrame {
+    pub fn is_keyframe(&self) -> bool {
+        self.flags & stream_flags::KEYFRAME != 0
+    }
+
+    pub fn is_stream_start(&self) -> bool {
+        self.flags & stream_flags::STREAM_START != 0
+    }
+
+    pub fn is_stream_end(&self) -> bool {
+        self.flags & stream_flags::STREAM_END != 0
+    }
+
+    pub fn is_codec_config(&self) -> bool {
+        self.flags & stream_flags::CODEC_CONFIG != 0
     }
 }
