@@ -117,6 +117,33 @@ enum Command {
         #[arg(short, long)]
         device: Option<u32>,
     },
+
+    /// Start screen mirroring from a device.
+    Mirror {
+        /// Device address (host:port).
+        #[arg(short, long, default_value = "127.0.0.1:9930")]
+        addr: SocketAddr,
+
+        /// USB device ID. Overrides --addr.
+        #[arg(short, long)]
+        device: Option<u32>,
+
+        /// Target FPS.
+        #[arg(short, long, default_value = "30")]
+        fps: u32,
+
+        /// Open web player in browser.
+        #[arg(long)]
+        web: bool,
+
+        /// Save mirror stream to MP4 file.
+        #[arg(long)]
+        save: Option<String>,
+
+        /// Web player bind port.
+        #[arg(long, default_value = "8080")]
+        port: u16,
+    },
 }
 
 #[tokio::main]
@@ -208,6 +235,16 @@ async fn main() -> Result<()> {
         }
         Command::Info { addr, device } => {
             cmd_info(addr, device).await?;
+        }
+        Command::Mirror {
+            addr,
+            device,
+            fps,
+            web,
+            save,
+            port,
+        } => {
+            cmd_mirror(addr, device, fps, web, save, port).await?;
         }
     }
 
@@ -462,6 +499,88 @@ async fn cmd_info(addr: SocketAddr, device: Option<u32>) -> Result<()> {
             data["version"].as_str().unwrap_or("?"),
             data["build"].as_str().unwrap_or("?")
         );
+    }
+
+    Ok(())
+}
+
+async fn cmd_mirror(
+    addr: SocketAddr,
+    device: Option<u32>,
+    fps: u32,
+    web: bool,
+    save: Option<String>,
+    port: u16,
+) -> Result<()> {
+    if !web && save.is_none() {
+        anyhow::bail!("specify --web and/or --save for mirror output");
+    }
+
+    let (event_tx, _) = mpsc::channel(16);
+    let client = connect(device, addr, event_tx).await?;
+
+    let (stream_id, receiver) = client
+        .start_mirror(fps)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to start mirror: {e}"))?;
+
+    println!("Mirror started (stream_id={stream_id}, fps={fps})");
+
+    // Start MP4 writer if --save
+    let mp4_handle = if let Some(ref path) = save {
+        let mp4_receiver = receiver;
+        let path = std::path::PathBuf::from(path);
+        Some(tokio::spawn(async move {
+            if let Err(e) = remo_desktop::mp4_muxer::write_mp4_file(mp4_receiver, &path).await {
+                eprintln!("MP4 writer error: {e}");
+            }
+        }))
+    } else {
+        drop(receiver);
+        None
+    };
+
+    // Start web player if --web
+    let web_shutdown = if web {
+        let stream_tx = client.stream_sender();
+        let bind = SocketAddr::from(([127, 0, 0, 1], port));
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        let server_addr = remo_desktop::web_player::start_server(stream_tx, bind, async {
+            shutdown_rx.await.ok();
+        })
+        .await?;
+        let url = format!("http://{server_addr}");
+        println!("Web player at {url}");
+        let _ = open::that(&url);
+
+        // shutdown_tx is moved into the closure below so the web server
+        // shuts down gracefully after Ctrl+C + stop_mirror.
+        Some(shutdown_tx)
+    } else {
+        None
+    };
+
+    // Wait for Ctrl+C
+    println!("Press Ctrl+C to stop...");
+    tokio::signal::ctrl_c().await?;
+
+    println!("\nStopping mirror...");
+    client
+        .stop_mirror(stream_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to stop mirror: {e}"))?;
+
+    // Shut down web server gracefully
+    if let Some(tx) = web_shutdown {
+        let _ = tx.send(());
+    }
+
+    // Wait for MP4 writer to finish
+    if let Some(handle) = mp4_handle {
+        handle.await?;
+        if let Some(path) = &save {
+            println!("Saved to {path}");
+        }
     }
 
     Ok(())

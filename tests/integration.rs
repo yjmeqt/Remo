@@ -4,10 +4,10 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use remo_desktop::{RpcClient, RpcResponse};
-use remo_protocol::{ErrorCode, ResponseResult};
+use remo_desktop::{RpcClient, RpcResponse, StreamReceiver};
+use remo_protocol::{stream_flags, ErrorCode, ResponseResult, StreamFrame};
 use remo_sdk::{CapabilityRegistry, RemoServer};
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 
 /// Helper: unwrap a JSON response from an RpcResponse.
 fn expect_json(resp: RpcResponse) -> remo_protocol::Response {
@@ -236,4 +236,25 @@ async fn start_mirror_twice_returns_error() {
     }
 
     let _ = shutdown.send(());
+}
+
+#[tokio::test]
+async fn stream_receiver_broadcast_multiple_subscribers() {
+    let (tx, _) = broadcast::channel::<StreamFrame>(16);
+
+    let mut rx1 = StreamReceiver::new(tx.subscribe());
+    let mut rx2 = StreamReceiver::new(tx.subscribe());
+
+    let frame = StreamFrame {
+        stream_id: 1,
+        sequence: 0,
+        timestamp_us: 0,
+        flags: stream_flags::KEYFRAME,
+        data: vec![0x65],
+    };
+    tx.send(frame).unwrap();
+
+    let f1 = rx1.next_frame().await.unwrap();
+    let f2 = rx2.next_frame().await.unwrap();
+    assert_eq!(f1.sequence, f2.sequence);
 }

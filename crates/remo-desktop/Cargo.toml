@@ -18,3 +18,4 @@ thiserror.workspace = true
 uuid.workspace = true
 dashmap.workspace = true
 futures.workspace = true
+axum.workspace = true

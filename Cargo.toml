@@ -79,6 +79,12 @@ dashmap = "6"
 # Encoding
 base64 = "0.22"
 
+# Web server
+axum = { version = "0.8", features = ["ws"] }
+
+# Open URLs in browser
+open = "5"
+
 [package]
 name = "remo-workspace"
 version.workspace = true

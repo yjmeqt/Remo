@@ -3,10 +3,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use remo_protocol::{Message, MessageId, Request, Response};
+use remo_protocol::{Message, MessageId, Request, Response, StreamFrame};
 use remo_transport::Connection;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
 use tracing::{debug, warn};
+
+use crate::stream_receiver::StreamReceiver;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RpcError {
@@ -18,6 +20,9 @@ pub enum RpcError {
 
     #[error("connection closed")]
     Closed,
+
+    #[error("remote: {0}")]
+    Remote(String),
 }
 
 /// Result of an RPC call — either a JSON response or a binary response.
@@ -32,6 +37,7 @@ pub struct RpcClient {
     writer: Arc<Mutex<remo_transport::WriteHalf>>,
     pending: Arc<Mutex<HashMap<MessageId, oneshot::Sender<RpcResponse>>>>,
     _event_tx: mpsc::Sender<remo_protocol::Event>,
+    stream_tx: broadcast::Sender<StreamFrame>,
 }
 
 impl RpcClient {
@@ -53,11 +59,13 @@ impl RpcClient {
         let writer = Arc::new(Mutex::new(writer));
         let pending: Arc<Mutex<HashMap<MessageId, oneshot::Sender<RpcResponse>>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let (stream_tx, _) = broadcast::channel(64);
 
         // Background read loop — only holds the reader, never blocks the writer.
         {
             let pending_r = Arc::clone(&pending);
             let evt_tx = event_tx.clone();
+            let stream_tx_r = stream_tx.clone();
 
             tokio::spawn(async move {
                 let mut reader = reader;
@@ -82,6 +90,9 @@ impl RpcClient {
                         Ok(Some(Message::Event(evt))) => {
                             let _ = evt_tx.send(evt).await;
                         }
+                        Ok(Some(Message::StreamFrame(frame))) => {
+                            let _ = stream_tx_r.send(frame);
+                        }
                         Ok(Some(_)) => {
                             debug!("unexpected message from device");
                         }
@@ -95,6 +106,7 @@ impl RpcClient {
             writer,
             pending,
             _event_tx: event_tx,
+            stream_tx,
         })
     }
 
@@ -121,5 +133,49 @@ impl RpcClient {
                 Err(RpcError::Timeout)
             }
         }
+    }
+
+    /// Subscribe to the stream of incoming `StreamFrame`s.
+    pub fn subscribe_stream(&self) -> StreamReceiver {
+        StreamReceiver::new(self.stream_tx.subscribe())
+    }
+
+    /// Get a clone of the broadcast sender for stream frames.
+    pub fn stream_sender(&self) -> broadcast::Sender<StreamFrame> {
+        self.stream_tx.clone()
+    }
+
+    /// Start a screen-mirror session and return the stream ID + a receiver.
+    pub async fn start_mirror(&self, fps: u32) -> Result<(u32, StreamReceiver), RpcError> {
+        let resp = self
+            .call(
+                "__start_mirror",
+                serde_json::json!({"fps": fps, "codec": "h264"}),
+                Duration::from_secs(10),
+            )
+            .await?;
+        let response = match resp {
+            RpcResponse::Json(r) => r,
+            RpcResponse::Binary(_) => return Err(RpcError::Closed),
+        };
+        match response.result {
+            remo_protocol::ResponseResult::Ok { data } => {
+                let stream_id = data["stream_id"].as_u64().unwrap_or(1) as u32;
+                let receiver = self.subscribe_stream();
+                Ok((stream_id, receiver))
+            }
+            remo_protocol::ResponseResult::Error { message, .. } => Err(RpcError::Remote(message)),
+        }
+    }
+
+    /// Stop a screen-mirror session.
+    pub async fn stop_mirror(&self, stream_id: u32) -> Result<(), RpcError> {
+        self.call(
+            "__stop_mirror",
+            serde_json::json!({"stream_id": stream_id}),
+            Duration::from_secs(10),
+        )
+        .await?;
+        Ok(())
     }
 }
