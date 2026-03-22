@@ -79,7 +79,7 @@ The iOS app embeds a lightweight SDK that starts a TCP server and advertises its
 
 | Crate | Platform | Description | Key dependencies |
 |---|---|---|---|
-| `remo-protocol` | Cross | Message types (`Request`, `Response`, `Event`) + length-prefixed framing codec | serde, tokio-util, uuid |
+| `remo-protocol` | Cross | Message types (`Request`, `Response`, `Event`) + length-prefixed framing codec with JSON (0x00) and binary (0x01) frame types | serde, tokio-util, uuid |
 | `remo-transport` | Cross | `Connection` (framed bidirectional TCP pipe) + `Listener` (async accept) | remo-protocol, tokio |
 | `remo-usbmuxd` | macOS | usbmuxd Unix socket client: device discovery, TCP tunnel creation | plist, tokio |
 | `remo-bonjour` | Cross* | Bonjour/mDNS service registration (iOS) and discovery (macOS) | dns-sd C API |
@@ -108,11 +108,30 @@ The iOS app embeds a lightweight SDK that starts a TCP server and advertises its
 Every message on the wire is:
 
 ```
-┌──────────────┬────────────────────────┐
-│ length (4B)  │ JSON payload           │
-│ u32 big-end. │ `length` bytes, UTF-8  │
-└──────────────┴────────────────────────┘
+┌──────────┬──────────┬─────────────────────────────────────┐
+│ len (4B) │ type(1B) │           payload                   │
+│ u32 BE   │          │           (len - 1 bytes)           │
+└──────────┴──────────┴─────────────────────────────────────┘
 ```
+
+The `len` field gives the number of bytes that follow (type byte + payload). The type byte selects the frame kind:
+
+**Type 0x00 — JSON frame.** The payload is a UTF-8 JSON object — a `Request`, `Response`, or `Event` (see section 3.2).
+
+**Type 0x01 — Binary frame.** The payload is structured as:
+
+```
+┌────────────────┬─────────────────────────┬──────────────────────┐
+│ meta_len (4B)  │ JSON metadata           │ raw binary data      │
+│ u32 BE         │ (meta_len bytes, UTF-8) │ (remaining bytes)    │
+└────────────────┴─────────────────────────┴──────────────────────┘
+```
+
+The metadata JSON contains:
+- `id` — UUID matching the originating request.
+- `metadata` — Capability-specific fields (e.g., image format, dimensions).
+
+Binary frames are used for large payloads (screenshots, file transfers) where base64 encoding would be wasteful.
 
 Maximum frame size: 16 MiB. Frames exceeding this are rejected at the codec level.
 
@@ -177,7 +196,7 @@ These are registered automatically by `RemoServer::new()` — no Swift code requ
 | `__ping` | none | `{"pong": true}` | Connectivity check |
 | `__list_capabilities` | none | `["navigate", "state.get", ...]` | Discovery |
 | `__view_tree` | `{"max_depth": N}` (optional) | `ViewNode` tree (JSON) | Snapshot the UIView hierarchy |
-| `__screenshot` | `{"format": "jpeg"\|"png", "quality": 0.8}` | `{"image": "<base64>", "width": ..., "height": ..., "scale": ...}` | Capture the screen |
+| `__screenshot` | `{"format": "jpeg"\|"png", "quality": 0.8}` | **BinaryResponse** (type 0x01 frame): raw image bytes. Metadata: `{"format", "width", "height", "scale", "size"}` | Capture the screen |
 | `__device_info` | none | `{"name", "model", "system_name", "system_version", "screen_width", "screen_height", "screen_scale"}` | Device model and screen |
 | `__app_info` | none | `{"bundle_id", "version", "build", "display_name"}` | App bundle metadata |
 
@@ -438,7 +457,7 @@ CI also runs `xcodebuild test` for the Swift package to verify the XCFramework +
 |---|---|---|---|
 | T-009 | `remo-desktop` | No macOS GUI | A SwiftUI macOS app with device list, view tree visualizer, and state inspector. |
 | T-010 | `remo-sdk` | Capability middleware / hooks | Pre/post hooks on capability invocation (logging, auth, rate limiting). |
-| T-011 | `remo-protocol` | No binary protocol option | Consider MessagePack or protobuf for large view tree / screenshot payloads. |
+| ~~T-011~~ | `remo-protocol` | ~~No binary protocol option~~ | **Fixed.** Binary frame type (0x01) added to wire protocol for raw payloads (screenshots). |
 | T-013 | `remo-objc` | No SwiftUI view identity mapping | UIView tree doesn't map well to SwiftUI's declarative hierarchy. |
 | T-014 | `remo-sdk` | Thread safety audit for FFI callbacks | `SendPtr` wrapper needs documentation or replacement. |
 | T-015 | `remo-protocol` | No versioning / handshake | Client and server don't negotiate protocol version. |
