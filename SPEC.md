@@ -1,13 +1,15 @@
 # Remo — Project Specification
 
-> Version: 0.2.0
+> Version: 0.3.0-dev
 > Last updated: 2026-03-22
 
 ## 1. Vision
 
-Remo is infrastructure for AI-driven iOS development. It bridges macOS and iOS over RPC, giving AI coding agents the eyes and hands they need to autonomously build, test, and debug iOS apps — closing the write → test → fix loop that has historically required human interaction on the iOS platform.
+Remo is infrastructure for **agentic iOS development**. It gives AI coding agents the eyes and hands they need to autonomously build, test, and debug iOS apps — closing the write → build → test → fix loop that has historically required human interaction on the iOS platform.
 
-The iOS app embeds a lightweight SDK that starts a TCP server and advertises itself via Bonjour. Any client — an AI agent, a CLI tool, or a future GUI — can discover the device, inspect the view hierarchy, take screenshots, read/write state, and invoke custom capabilities. The agent writes code, triggers a build, then uses Remo to verify the result on a real simulator or device — all without leaving the terminal.
+The core idea: iOS developers register **capabilities** (named Swift handlers) via the Remo SDK. AI agents discover real devices (USB) and simulators, invoke those capabilities to manipulate app state or trigger actions, then **verify the result** via screenshot or captured video. The agent doesn't guess whether its code change worked — it looks at the screen, just like a human developer would.
+
+The SDK starts a TCP server inside the app. Real devices are discovered via USB (usbmuxd), simulators via Bonjour/mDNS. Any client — an AI agent, a CLI tool, or a web dashboard — can discover the device, call capabilities, inspect the view tree, capture screenshots, or record video (useful for reviewing animations). This enables a fully autonomous loop: agent writes code → triggers build → calls Remo to verify → iterates.
 
 ### 1.1 Core principles
 
@@ -15,15 +17,15 @@ The iOS app embeds a lightweight SDK that starts a TCP server and advertises its
 - **Rust-heavy**: All protocol, transport, server, registry, and ObjC bridge logic is written in Rust. Swift is a thin shell for UI and FFI callbacks.
 - **Capability-oriented**: iOS apps don't expose a fixed API. Instead, developers register named handlers at runtime. Agents (or humans) discover and call them.
 - **Multi-device**: A single macOS process can manage multiple iOS devices (real or simulated) simultaneously through independent connections.
-- **Transport-agnostic**: USB (via usbmuxd), simulator (localhost TCP), and Wi-Fi (Bonjour discovery) all converge on the same framed TCP protocol.
+- **Transport-agnostic**: USB (via usbmuxd) for real devices and localhost TCP for simulators converge on the same framed TCP protocol. Wi-Fi support is planned but not primary.
 
 ### 1.2 Key use cases
 
-1. **AI Agent development loop**: Agents discover devices, invoke capabilities, inspect UI via view tree, and take screenshots — enabling autonomous write → build → test → fix cycles for iOS development without human interaction.
-2. **Remote state manipulation**: Read/write values in an app's `@Observable` store from the Mac. Change a counter, swap a username, inject test data — the iOS UI reacts immediately.
-3. **Remote navigation**: Push a route, pop a stack, switch tabs — all from a CLI command or agent call.
-4. **Visual verification**: Take screenshots and inspect the view hierarchy as JSON for automated UI validation — essential for agents to confirm their code changes produce the correct visual output.
-5. **Custom capabilities**: App developers register arbitrary handlers. Agents can call any of them to exercise app-specific behavior.
+1. **Agentic iOS development loop**: The primary use case. An AI agent writes Swift code, triggers a build, then uses Remo to verify the result: invoke capabilities → screenshot or captured video → decide if the UI is correct → iterate. No human in the loop.
+2. **Capability registration**: iOS developers register named Swift handlers (capabilities). Agents discover and invoke them at runtime — read CoreData, toggle feature flags, navigate routes, inject test data. The capability system is the bridge between agent intent and app behavior.
+3. **Visual verification**: Screenshots and captured video let agents **see what the user sees** after every action. Screenshots for static UI checks; video recording for reviewing animations and transitions.
+4. **Remote state manipulation**: Read/write values in an app's `@Observable` store from the Mac. Change a counter, swap a username, inject test data — the iOS UI reacts immediately.
+5. **Remote navigation**: Push a route, pop a stack, switch tabs — all from a CLI command or agent call.
 6. **Event streaming**: iOS pushes events (state changes, navigation events, logs) to macOS in real time.
 
 ---
@@ -85,8 +87,8 @@ The iOS app embeds a lightweight SDK that starts a TCP server and advertises its
 | `remo-bonjour` | Cross* | Bonjour/mDNS service registration (iOS) and discovery (macOS) | dns-sd C API |
 | `remo-sdk` | iOS | Embedded TCP server + capability registry + built-in capabilities + C ABI FFI layer | remo-protocol, remo-transport, remo-objc, remo-bonjour, base64, dashmap |
 | `remo-objc` | iOS* | ObjC runtime bridge: view tree, screenshot, device/app info, GCD main-thread dispatch | objc2, objc2-foundation, objc2-ui-kit |
-| `remo-desktop` | macOS | Device manager (USB + Bonjour discovery + connection pool) + RPC client | remo-protocol, remo-transport, remo-usbmuxd, remo-bonjour |
-| `remo-cli` | macOS | CLI tool: `devices`, `call`, `list`, `watch`, `tree`, `screenshot`, `info` | remo-desktop, clap, base64 |
+| `remo-desktop` | macOS | Device manager, RPC client, web dashboard, fMP4 muxer, stream receiver | remo-protocol, remo-transport, remo-usbmuxd, remo-bonjour, axum |
+| `remo-cli` | macOS | CLI tool: `devices`, `dashboard`, `call`, `list`, `watch`, `tree`, `screenshot`, `info`, `mirror` | remo-desktop, clap, base64 |
 
 *`remo-objc` compiles on all platforms with stubs; real UIKit access requires the `uikit` feature and an Apple target.
 
@@ -133,7 +135,18 @@ The metadata JSON contains:
 
 Binary frames are used for large payloads (screenshots, file transfers) where base64 encoding would be wasteful.
 
-Maximum frame size: 16 MiB. Frames exceeding this are rejected at the codec level.
+**Type 0x02 — Stream frame.** The payload is a video/audio stream frame:
+
+```
+┌───────────┬─────────────────┬──────────────────────┐
+│ flags(1B) │ timestamp_us(8B)│ NAL data             │
+│           │ u64 BE          │ (remaining bytes)    │
+└───────────┴─────────────────┴──────────────────────┘
+```
+
+Flags: `0x01` = keyframe, `0x02` = codec config (SPS/PPS), `0x80` = stream end.
+
+Maximum frame size: 64 MiB. Frames exceeding this are rejected at the codec level.
 
 ### 3.2 Message types
 
@@ -199,6 +212,8 @@ These are registered automatically by `RemoServer::new()` — no Swift code requ
 | `__screenshot` | `{"format": "jpeg"\|"png", "quality": 0.8}` | **BinaryResponse** (type 0x01 frame): raw image bytes. Metadata: `{"format", "width", "height", "scale", "size"}` | Capture the screen |
 | `__device_info` | none | `{"name", "model", "system_name", "system_version", "screen_width", "screen_height", "screen_scale"}` | Device model and screen |
 | `__app_info` | none | `{"bundle_id", "version", "build", "display_name"}` | App bundle metadata |
+| `__start_mirror` | `{"fps": 30, "codec": "h264"}` | `{"stream_id": 1}` | Start screen mirror; frames arrive as Type 0x02 stream frames |
+| `__stop_mirror` | `{"stream_id": 1}` | `{}` | Stop mirror session |
 
 ---
 
@@ -325,12 +340,53 @@ Each device connection gets an `RpcClient` instance:
 | Command | Description | Example |
 |---|---|---|
 | `remo devices` | Auto-discover devices (USB + Bonjour) | `remo devices` |
+| `remo dashboard` | Web dashboard with multi-device UI | `remo dashboard --port 8080` |
 | `remo call -a <addr> <cap> [params]` | Invoke a capability | `remo call -a 127.0.0.1:51363 navigate '{"route":"/home"}'` |
 | `remo list -a <addr>` | List registered capabilities | `remo list -a 127.0.0.1:51363` |
 | `remo watch -a <addr>` | Stream events from device | `remo watch -a 127.0.0.1:51363` |
 | `remo tree -a <addr>` | Dump view hierarchy | `remo tree -a 127.0.0.1:51363 -m 3` |
 | `remo screenshot -a <addr>` | Capture screenshot to file | `remo screenshot -a 127.0.0.1:51363 -o shot.jpg` |
 | `remo info -a <addr>` | Show device and app info | `remo info -a 127.0.0.1:51363` |
+| `remo mirror -a <addr>` | Live screen mirror | `remo mirror -a 127.0.0.1:51363 --web --port 8090` |
+
+### 6.4 Web dashboard
+
+The `remo dashboard` command starts an axum HTTP/WebSocket server with an embedded single-page web UI.
+
+**Architecture**: The dashboard holds a `DashboardState` with a `DeviceManager` for discovery, an optional `ActiveConnection` for the currently connected device, and broadcast channels for streaming video frames and push events.
+
+**REST endpoints**:
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/devices` | GET | List all discovered devices (USB + Bonjour) |
+| `/api/connect` | POST | Connect to device (`{"id": "usb:15"}` or `{"id": "bonjour:Name"}`) |
+| `/api/disconnect` | POST | Disconnect from current device |
+| `/api/connection` | GET | Check connection status |
+| `/api/info` | GET | Device + app info |
+| `/api/capabilities` | GET | List registered capabilities |
+| `/api/call` | POST | Invoke a capability (`{"name": "...", "params": {...}}`) |
+| `/api/screenshot` | POST | Capture screenshot (returns JPEG bytes) |
+| `/api/mirror/start` | POST | Start screen mirror (`{"fps": 30}`) |
+| `/api/mirror/stop` | POST | Stop screen mirror |
+
+**WebSocket endpoints**:
+
+| Endpoint | Description |
+|---|---|
+| `/ws/stream` | Binary stream of video frames (`[flags(1B)][timestamp_us(8B)][nal_data]`) |
+| `/ws/events` | JSON push events (device added/removed, connection established/lost, RPC events) |
+
+**Device ID format**: `usb:<numeric_id>` for USB devices, `bonjour:<service_name>` for Bonjour devices.
+
+### 6.5 Video streaming pipeline
+
+Screen mirroring flows through:
+
+1. **iOS**: `RPScreenRecorder` captures `CMSampleBuffer` → VideoToolbox H.264 encoder → Annex-B NAL units
+2. **Wire**: NAL units sent as Type 0x02 stream frames (flags + timestamp + data)
+3. **Desktop**: `StreamReceiver` collects frames → `Mp4Muxer` wraps in fMP4 (init segment + moof/mdat) → WebSocket binary to browser
+4. **Browser**: MSE `MediaSource` API appends fMP4 segments to `<video>` element
 
 ---
 
@@ -561,13 +617,23 @@ remo/
 │   │       ├── main_thread.rs              # GCD dispatch: run_on_main_sync()
 │   │       ├── view_tree.rs                # ViewNode, snapshot_view_tree()
 │   │       ├── screenshot.rs               # capture_screenshot() → JPEG/PNG bytes
-│   │       └── device_info.rs              # get_device_info(), get_app_info()
+│   │       ├── device_info.rs              # get_device_info(), get_app_info()
+│   │       ├── screen_capture.rs           # RPScreenRecorder → CMSampleBuffer capture
+│   │       └── video_encoder.rs            # VideoToolbox H.264 encoder + AVCC→Annex-B
 │   ├── remo-desktop/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── rpc_client.rs               # RpcClient (async call w/ timeout + event stream)
-│   │       └── device_manager.rs           # DeviceManager (USB + Bonjour discovery)
+│   │       ├── device_manager.rs           # DeviceManager (USB + Bonjour discovery)
+│   │       ├── stream_receiver.rs          # StreamReceiver (broadcast → ordered frames)
+│   │       ├── mp4_muxer.rs               # fMP4 muxer (init segment + moof/mdat)
+│   │       ├── dashboard/
+│   │       │   ├── mod.rs                  # axum HTTP/WS server + REST API
+│   │       │   └── dashboard.html          # Single-page web UI (embedded)
+│   │       └── web_player/
+│   │           ├── mod.rs                  # Standalone web player server
+│   │           └── player.html             # MSE video player page
 │   └── remo-cli/
 │       ├── Cargo.toml
 │       └── src/
@@ -620,15 +686,22 @@ remo/
 - GitHub Actions CI (check, fmt, clippy, test, iOS build, Swift integration)
 - Automated release pipeline → `remo-spm` binary SPM package
 
-### M6: Event streaming (next)
+### ~~M6: Video streaming + Web dashboard~~ Done (v0.3.0-dev)
+- H.264 screen capture via RPScreenRecorder + VideoToolbox
+- StreamFrame wire protocol (Type 0x02)
+- fMP4 muxer + MSE web player
+- Web dashboard with multi-device discovery, device selector, video streaming, screenshots, capabilities panel
+- `remo dashboard` and `remo mirror` CLI commands
+
+### M7: Event streaming (next)
 - Implement T-004 (event push FFI + observation tracking)
 - `remo watch` receives live state changes
 
-### M7: macOS GUI
-- Implement T-009 (SwiftUI desktop app)
+### M8: macOS GUI
+- Implement T-009 (desktop app)
 - Device list, live view tree, state editor, event log
 
-### M8: Production readiness
+### M9: Production readiness
 - Implement T-003 (reconnection), T-015 (handshake)
 - View property modification (T-016)
 - Audit T-014 (thread safety)

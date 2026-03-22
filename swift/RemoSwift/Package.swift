@@ -23,6 +23,9 @@ let package = Package(
             linkerSettings: [
                 .linkedLibrary("c++"),
                 .linkedFramework("Security"),
+                .linkedFramework("CoreMedia"),
+                .linkedFramework("VideoToolbox"),
+                .linkedFramework("CoreFoundation"),
             ]
         ),
     ]

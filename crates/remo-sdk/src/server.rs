@@ -1,8 +1,9 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use remo_protocol::{ErrorCode, Message, Request, Response};
 use remo_transport::{Connection, Listener};
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::{broadcast, oneshot, Mutex};
 use tracing::{error, info, warn};
 
 use crate::registry::CapabilityRegistry;
@@ -200,12 +201,20 @@ fn count_descendants(node: &remo_objc::ViewNode) -> usize {
 // Connection handling
 // ---------------------------------------------------------------------------
 
-async fn handle_connection(mut conn: Connection, registry: CapabilityRegistry) {
+async fn handle_connection(conn: Connection, registry: CapabilityRegistry) {
     let peer = conn.peer_addr();
     info!(%peer, "handling connection");
 
+    let (mut read_half, write_half) = conn.split();
+    let write_half = Arc::new(Mutex::new(write_half));
+    let sender = crate::streaming::StreamSender::new(Arc::clone(&write_half));
+
+    // Active mirror session (only one at a time per connection)
+    let mirror_session: Arc<Mutex<Option<Arc<crate::streaming::MirrorSession>>>> =
+        Arc::new(Mutex::new(None));
+
     loop {
-        let msg = match conn.recv().await {
+        let msg = match read_half.recv().await {
             Ok(Some(msg)) => msg,
             Ok(None) => {
                 info!(%peer, "connection closed");
@@ -219,8 +228,10 @@ async fn handle_connection(mut conn: Connection, registry: CapabilityRegistry) {
 
         match msg {
             Message::Request(req) => {
-                let msg = dispatch_request(&registry, req).await;
-                if let Err(e) = conn.send(msg).await {
+                let response_msg =
+                    dispatch_request_with_streaming(&registry, req, &sender, &mirror_session).await;
+
+                if let Err(e) = sender.send_message(response_msg).await {
                     warn!(%peer, "write error: {e}");
                     break;
                 }
@@ -228,6 +239,82 @@ async fn handle_connection(mut conn: Connection, registry: CapabilityRegistry) {
             other => {
                 warn!(%peer, "unexpected message type: {other:?}");
             }
+        }
+    }
+
+    // Stop any active mirror session on disconnect
+    let session = mirror_session.lock().await.take();
+    if let Some(s) = session {
+        s.stop();
+    }
+}
+
+async fn dispatch_request_with_streaming(
+    registry: &CapabilityRegistry,
+    req: Request,
+    sender: &crate::streaming::StreamSender,
+    mirror_session: &Arc<Mutex<Option<Arc<crate::streaming::MirrorSession>>>>,
+) -> Message {
+    let Request {
+        id,
+        capability,
+        params,
+    } = req;
+
+    match capability.as_str() {
+        "__start_mirror" => {
+            let mut session_guard = mirror_session.lock().await;
+            if session_guard.is_some() {
+                return Message::Response(Response::error(
+                    id,
+                    ErrorCode::StreamAlreadyActive,
+                    "a mirror stream is already active",
+                ));
+            }
+
+            let fps = params
+                .get("fps")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(30)
+                .clamp(1, 120) as u32;
+
+            let stream_id = 1u32;
+            let session = Arc::new(crate::streaming::MirrorSession::new(stream_id));
+            *session_guard = Some(Arc::clone(&session));
+
+            let sender_clone = sender.clone();
+            tokio::spawn(async move {
+                crate::streaming::run_mirror_loop(session, sender_clone, fps).await;
+            });
+
+            Message::Response(Response::ok(
+                id,
+                serde_json::json!({ "stream_id": stream_id }),
+            ))
+        }
+        "__stop_mirror" => {
+            let mut session_guard = mirror_session.lock().await;
+            if let Some(session) = session_guard.take() {
+                session.stop();
+                Message::Response(Response::ok(id, serde_json::json!({ "stopped": true })))
+            } else {
+                Message::Response(Response::error(
+                    id,
+                    ErrorCode::NotFound,
+                    "no active mirror stream",
+                ))
+            }
+        }
+        _ => {
+            dispatch_request(
+                registry,
+                Request {
+                    id,
+                    capability,
+                    params,
+                },
+            )
+            .await
         }
     }
 }

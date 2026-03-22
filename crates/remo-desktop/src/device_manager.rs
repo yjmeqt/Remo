@@ -198,10 +198,28 @@ impl DeviceManager {
                 Ok(RpcClient::from_connection(conn, event_tx)?)
             }
             DeviceTransport::Bonjour { host, port } => {
-                let addr = info
-                    .addr()
-                    .ok_or_else(|| format!("cannot resolve {host}:{port}"))?;
-                Ok(RpcClient::connect(addr, event_tx).await?)
+                use std::net::ToSocketAddrs;
+                let addrs: Vec<SocketAddr> = format!("{}:{}", host.trim_end_matches('.'), port)
+                    .to_socket_addrs()
+                    .map(Iterator::collect)
+                    .unwrap_or_default();
+                if addrs.is_empty() {
+                    return Err(format!("cannot resolve {host}:{port}").into());
+                }
+                let mut last_err = None;
+                for addr in &addrs {
+                    info!(device = %id, %addr, "trying Bonjour address");
+                    match RpcClient::connect(*addr, event_tx.clone()).await {
+                        Ok(client) => return Ok(client),
+                        Err(e) => {
+                            info!(device = %id, %addr, error = %e, "address failed, trying next");
+                            last_err = Some(e);
+                        }
+                    }
+                }
+                Err(last_err
+                    .map(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+                    .unwrap_or_else(|| format!("cannot resolve {host}:{port}").into()))
             }
             DeviceTransport::Manual { addr } => Ok(RpcClient::connect(*addr, event_tx).await?),
         }
