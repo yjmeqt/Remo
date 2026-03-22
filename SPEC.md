@@ -1,26 +1,30 @@
 # Remo — Project Specification
 
-> Version: 0.1.0-draft
-> Last updated: 2026-03-21
+> Version: 0.2.0
+> Last updated: 2026-03-22
 
 ## 1. Vision
 
-Remo is a remote control bridge between macOS and iOS. It lets a macOS desktop tool inspect and manipulate the internals of a running iOS app — navigation state, business logic stores, view hierarchy — over USB or network. Think of it as Lookin meets RPC: the iOS app registers **capabilities** (named handlers), and the macOS side invokes them by name.
+Remo is infrastructure for AI-driven iOS development. It bridges macOS and iOS over RPC, giving AI coding agents the eyes and hands they need to autonomously build, test, and debug iOS apps — closing the write → test → fix loop that has historically required human interaction on the iOS platform.
+
+The iOS app embeds a lightweight SDK that starts a TCP server and advertises itself via Bonjour. Any client — an AI agent, a CLI tool, or a future GUI — can discover the device, inspect the view hierarchy, take screenshots, read/write state, and invoke custom capabilities. The agent writes code, triggers a build, then uses Remo to verify the result on a real simulator or device — all without leaving the terminal.
 
 ### 1.1 Core principles
 
+- **Agent-first**: Every design decision prioritizes programmatic access. CLI commands, JSON-RPC protocol, auto-discovery, and zero-config introspection are all built so that AI agents can operate iOS apps without human assistance.
 - **Rust-heavy**: All protocol, transport, server, registry, and ObjC bridge logic is written in Rust. Swift is a thin shell for UI and FFI callbacks.
-- **Capability-oriented**: iOS apps don't expose a fixed API. Instead, developers register named handlers at runtime. The macOS side discovers and calls them.
+- **Capability-oriented**: iOS apps don't expose a fixed API. Instead, developers register named handlers at runtime. Agents (or humans) discover and call them.
 - **Multi-device**: A single macOS process can manage multiple iOS devices (real or simulated) simultaneously through independent connections.
 - **Transport-agnostic**: USB (via usbmuxd), simulator (localhost TCP), and Wi-Fi (Bonjour discovery) all converge on the same framed TCP protocol.
 
 ### 1.2 Key use cases
 
-1. **Remote state manipulation**: Read/write values in an app's `@Observable` store from the Mac. Change a counter, swap a username, inject test data — the iOS UI reacts immediately.
-2. **Remote navigation**: Push a route, pop a stack, switch tabs — all from a CLI command or GUI click.
-3. **View hierarchy inspection**: Snapshot the UIView tree as JSON, including frames, class names, accessibility identifiers.
-4. **Custom capabilities**: App developers register arbitrary handlers. The macOS side can call any of them.
-5. **Event streaming**: iOS pushes events (state changes, navigation events, logs) to macOS in real time.
+1. **AI Agent development loop**: Agents discover devices, invoke capabilities, inspect UI via view tree, and take screenshots — enabling autonomous write → build → test → fix cycles for iOS development without human interaction.
+2. **Remote state manipulation**: Read/write values in an app's `@Observable` store from the Mac. Change a counter, swap a username, inject test data — the iOS UI reacts immediately.
+3. **Remote navigation**: Push a route, pop a stack, switch tabs — all from a CLI command or agent call.
+4. **Visual verification**: Take screenshots and inspect the view hierarchy as JSON for automated UI validation — essential for agents to confirm their code changes produce the correct visual output.
+5. **Custom capabilities**: App developers register arbitrary handlers. Agents can call any of them to exercise app-specific behavior.
+6. **Event streaming**: iOS pushes events (state changes, navigation events, logs) to macOS in real time.
 
 ---
 
@@ -29,45 +33,46 @@ Remo is a remote control bridge between macOS and iOS. It lets a macOS desktop t
 ### 2.1 System layers
 
 ```
-┌──────────────────────────────────────────┐
-│  macOS — Rust binary                     │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ │
-│  │ remo CLI │ │ Device   │ │ RPC      │ │
-│  │ (clap)   │ │ Manager  │ │ Client   │ │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ │
-│       │      ┌─────┴─────┐      │       │
-│       │      │ usbmuxd   │      │       │
-│       │      │ connector  │      │       │
-│       └──────┴─────┬─────┴──────┘       │
-│              ┌─────┴─────┐               │
-│              │ transport  │               │
-│              └─────┬─────┘               │
-└────────────────────┼─────────────────────┘
-                     │ USB tunnel / TCP
-┌────────────────────┼─────────────────────┐
-│  iOS — Rust static lib + Swift shell     │
-│              ┌─────┴─────┐               │
-│              │ transport  │               │
-│              └─────┬─────┘               │
-│       ┌────────────┼────────────┐        │
-│  ┌────┴────┐ ┌─────┴─────┐ ┌───┴────┐   │
-│  │ RPC     │ │ Capability │ │ ObjC   │   │
-│  │ Server  │ │ Registry   │ │ Bridge │   │
-│  └─────────┘ └─────┬─────┘ └────────┘   │
-│         ┌──────────┼──────────┐          │
-│    ┌────┴───┐ ┌────┴───┐ ┌───┴────┐     │
-│    │navigate│ │state   │ │view    │     │
-│    │        │ │read/   │ │tree    │     │
-│    │        │ │write   │ │inspect │     │
-│    └────────┘ └────────┘ └────────┘     │
-│                                          │
-│  ─ ─ ─ ─ ─ FFI boundary (C ABI) ─ ─ ─  │
-│                                          │
-│  ┌───────────────────────────────────┐   │
-│  │ Swift host app (SwiftUI/UIKit)    │   │
-│  │ RemoSwift wrapper + App stores    │   │
-│  └───────────────────────────────────┘   │
-└──────────────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│  macOS — Rust binary                      │
+│  ┌──────────┐ ┌───────────┐ ┌──────────┐ │
+│  │ remo CLI │ │ Device    │ │ RPC      │ │
+│  │ (clap)   │ │ Manager   │ │ Client   │ │
+│  └────┬─────┘ └─────┬─────┘ └────┬─────┘ │
+│       │      ┌───────┼───────┐    │       │
+│       │      │ Bonjour│usbmuxd│    │       │
+│       │      │ browse │tunnel │    │       │
+│       └──────┴───────┴───┬───┴────┘       │
+│              ┌───────────┴──┐              │
+│              │  transport   │              │
+│              └───────┬──────┘              │
+└──────────────────────┼────────────────────┘
+                       │ USB tunnel / Wi-Fi / localhost
+┌──────────────────────┼────────────────────┐
+│  iOS — Rust static lib + Swift shell      │
+│              ┌───────┴──────┐              │
+│              │  transport   │              │
+│              └───────┬──────┘              │
+│       ┌──────────────┼──────────────┐      │
+│  ┌────┴─────┐ ┌──────┴──────┐ ┌────┴───┐  │
+│  │ RPC      │ │ Capability  │ │ ObjC   │  │
+│  │ Server   │ │ Registry    │ │ Bridge │  │
+│  └──────────┘ └──────┬──────┘ └────────┘  │
+│       ┌──────────────┼──────────────┐      │
+│  ┌────┴───┐ ┌────────┴────┐ ┌──────┴───┐  │
+│  │Bonjour │ │ Built-in    │ │ Custom   │  │
+│  │advertise│ │ view_tree   │ │ handlers │  │
+│  │        │ │ screenshot  │ │ (Swift)  │  │
+│  │        │ │ device_info │ │          │  │
+│  └────────┘ └─────────────┘ └──────────┘  │
+│                                            │
+│  ─ ─ ─ ─ ─ ─ FFI boundary (C ABI) ─ ─ ─  │
+│                                            │
+│  ┌────────────────────────────────────┐    │
+│  │ Swift host app (SwiftUI/UIKit)     │    │
+│  │ RemoSwift wrapper + App stores     │    │
+│  └────────────────────────────────────┘    │
+└────────────────────────────────────────────┘
 ```
 
 ### 2.2 Crate topology
@@ -77,10 +82,11 @@ Remo is a remote control bridge between macOS and iOS. It lets a macOS desktop t
 | `remo-protocol` | Cross | Message types (`Request`, `Response`, `Event`) + length-prefixed framing codec | serde, tokio-util, uuid |
 | `remo-transport` | Cross | `Connection` (framed bidirectional TCP pipe) + `Listener` (async accept) | remo-protocol, tokio |
 | `remo-usbmuxd` | macOS | usbmuxd Unix socket client: device discovery, TCP tunnel creation | plist, tokio |
-| `remo-sdk` | iOS | Embedded TCP server + capability registry + C ABI FFI layer | remo-protocol, remo-transport, remo-objc, dashmap |
-| `remo-objc` | iOS* | UIView tree walker via `objc2`, ObjC runtime inspection | objc2, objc2-foundation, objc2-ui-kit |
-| `remo-desktop` | macOS | Device manager (discovery + connection pool) + RPC client | remo-protocol, remo-transport, remo-usbmuxd |
-| `remo-cli` | macOS | CLI tool: `remo devices`, `remo call`, `remo list`, `remo watch` | remo-desktop, clap |
+| `remo-bonjour` | Cross* | Bonjour/mDNS service registration (iOS) and discovery (macOS) | dns-sd C API |
+| `remo-sdk` | iOS | Embedded TCP server + capability registry + built-in capabilities + C ABI FFI layer | remo-protocol, remo-transport, remo-objc, remo-bonjour, base64, dashmap |
+| `remo-objc` | iOS* | ObjC runtime bridge: view tree, screenshot, device/app info, GCD main-thread dispatch | objc2, objc2-foundation, objc2-ui-kit |
+| `remo-desktop` | macOS | Device manager (USB + Bonjour discovery + connection pool) + RPC client | remo-protocol, remo-transport, remo-usbmuxd, remo-bonjour |
+| `remo-cli` | macOS | CLI tool: `devices`, `call`, `list`, `watch`, `tree`, `screenshot`, `info` | remo-desktop, clap, base64 |
 
 *`remo-objc` compiles on all platforms with stubs; real UIKit access requires the `uikit` feature and an Apple target.
 
@@ -88,10 +94,10 @@ Remo is a remote control bridge between macOS and iOS. It lets a macOS desktop t
 
 | Component | Role |
 |---|---|
-| `remo.h` | C header (auto-generated by cbindgen or manually maintained) |
-| `CRemo` module | SPM system library linking to `libremo_sdk.a` |
-| `RemoSwift` package | Thin Swift wrapper: `Remo.start()`, `Remo.register("name") { ... }` |
-| `RemoExample` app | Demo app: 3 tabs, counter store, list, settings. Registers 4 capabilities. |
+| `remo.h` | Manually maintained C header for the FFI boundary |
+| `CRemo` module | SPM binary target wrapping `RemoSDK.xcframework` |
+| `RemoSwift` package | Thin Swift wrapper with zero-config auto-start: `Remo.register("name") { ... }`. Debug-only (`#if DEBUG`). Server starts automatically on first API access (random port on simulator, 9930 on device). |
+| `RemoExample` app | Demo app: 4 tabs (Home, Items, Activity Log, Settings), 10+ capabilities. |
 
 ---
 
@@ -164,12 +170,16 @@ All messages are JSON with a `"type"` discriminator:
 
 ### 3.4 Built-in capabilities
 
-These are registered automatically by `RemoServer::new()`:
+These are registered automatically by `RemoServer::new()` — no Swift code required:
 
 | Name | Params | Returns | Description |
 |---|---|---|---|
 | `__ping` | none | `{"pong": true}` | Connectivity check |
 | `__list_capabilities` | none | `["navigate", "state.get", ...]` | Discovery |
+| `__view_tree` | `{"max_depth": N}` (optional) | `ViewNode` tree (JSON) | Snapshot the UIView hierarchy |
+| `__screenshot` | `{"format": "jpeg"\|"png", "quality": 0.8}` | `{"image": "<base64>", "width": ..., "height": ..., "scale": ...}` | Capture the screen |
+| `__device_info` | none | `{"name", "model", "system_name", "system_version", "screen_width", "screen_height", "screen_scale"}` | Device model and screen |
+| `__app_info` | none | `{"bundle_id", "version", "build", "display_name"}` | App bundle metadata |
 
 ---
 
@@ -177,7 +187,7 @@ These are registered automatically by `RemoServer::new()`:
 
 ### 4.1 Simulator / Wi-Fi
 
-Direct TCP to `<host>:<port>` (default port: `9930`). For simulator, `host` is `127.0.0.1`.
+Direct TCP to `<host>:<port>`. Port 0 (auto-assign) is recommended; each app instance gets a unique port advertised via Bonjour. For simulator, `host` is `127.0.0.1`.
 
 ### 4.2 USB via usbmuxd
 
@@ -203,9 +213,14 @@ The macOS usbmuxd daemon (`/var/run/usbmuxd`) multiplexes TCP connections over U
 
 Payload is XML plist.
 
-### 4.3 Bonjour / mDNS (future)
+### 4.3 Bonjour / mDNS
 
-For Wi-Fi discovery without knowing the device IP. The iOS SDK would advertise a Bonjour service (`_remo._tcp`), and the macOS device manager would browse for it.
+The `remo-bonjour` crate wraps the Apple dns_sd C API for zero-config networking:
+
+- **iOS (server side)**: The server auto-starts on first API access and registers a Bonjour service of type `_remo._tcp` with the actual bound port. The service is de-advertised on `remo_stop()`.
+- **macOS (client side)**: `remo devices` browses for `_remo._tcp` services, resolves hostnames to addresses, and lists discovered simulators/devices alongside USB devices.
+
+Port 0 (auto-assign) is recommended for multi-simulator setups — each simulator gets a unique port, and Bonjour advertises the correct one.
 
 ---
 
@@ -227,7 +242,7 @@ The Rust static library exposes 5 C functions:
 
 | Function | Signature | Description |
 |---|---|---|
-| `remo_start` | `(port: u16)` | Start tokio runtime + TCP server |
+| `remo_start` | `(port: u16)` | Start tokio runtime + TCP server. Idempotent — auto-called by Swift wrapper on first API access. |
 | `remo_stop` | `()` | Graceful shutdown |
 | `remo_register_capability` | `(name: *const c_char, context: *mut c_void, callback: fn)` | Register a Swift handler |
 | `remo_free_string` | `(ptr: *mut c_char)` | Free a Rust-allocated string |
@@ -237,22 +252,28 @@ The Rust static library exposes 5 C functions:
 
 ### 5.3 Threading model
 
-- `remo_start()` initializes a global `tokio::runtime::Runtime` (multi-thread) stored in a `OnceLock<Mutex<RemoGlobal>>`.
+- `remo_start()` is idempotent (guarded by `AtomicBool`). The Swift wrapper auto-calls it on first API access via a lazy `static let`. It initializes a global `tokio::runtime::Runtime` (multi-thread) stored in a `OnceLock<Mutex<RemoGlobal>>`.
 - The TCP server and all connection handlers run on tokio's thread pool.
-- FFI capability callbacks are invoked on a tokio worker thread. For UI mutations, the Swift handler must dispatch to `DispatchQueue.main`.
+- Built-in capabilities that require UIKit access (view tree, screenshot, device info) use `remo_objc::run_on_main_sync()` to dispatch work to the main thread via GCD `dispatch_sync_f`.
+- FFI capability callbacks (user-registered) are invoked on a tokio worker thread. For UI mutations, the Swift handler must dispatch to `DispatchQueue.main`.
 
 ### 5.4 ObjC bridge (`remo-objc`)
 
 Uses `objc2` + `objc2-ui-kit` to inspect the ObjC runtime directly from Rust.
 
-**Currently implemented**:
-- `snapshot_view_tree()`: Walk the key window's UIView hierarchy and serialize to `ViewNode` JSON (class name, frame, alpha, hidden, accessibility identifier, children).
+**Modules**:
+
+| Module | Description |
+|---|---|
+| `main_thread` | GCD dispatch utility: `run_on_main_sync()` dispatches closures to the main queue via `dispatch_sync_f`. Detects if already on main thread to avoid deadlock. |
+| `view_tree` | `snapshot_view_tree()`: Walk the key window's UIView hierarchy and serialize to `ViewNode` JSON (class name, frame, alpha, hidden, tag, accessibility identifier, children). |
+| `screenshot` | `capture_screenshot(format, quality)`: Capture the key window using `UIGraphicsBeginImageContextWithOptions` + `drawViewHierarchyInRect:afterScreenUpdates:`. Returns raw JPEG/PNG bytes. |
+| `device_info` | `get_device_info()`: Read `UIDevice.currentDevice` properties (name, model, systemVersion) and `UIScreen.mainScreen` properties (bounds, scale). `get_app_info()`: Read `NSBundle.mainBundle` info dictionary (bundleIdentifier, version, build, displayName). |
 
 **Reachable via ObjC runtime** (not yet implemented):
 - `performSelector:` on arbitrary ObjC objects
-- Read UIView layer properties (cornerRadius, borderWidth, backgroundColor)
+- Read/write UIView layer properties (cornerRadius, borderWidth, backgroundColor)
 - Accessibility tree traversal
-- `UIApplication` state (statusBarOrientation, applicationState)
 
 **Not reachable from ObjC runtime** (must go through FFI callbacks):
 - Swift structs, enums, generics
@@ -266,9 +287,10 @@ Uses `objc2` + `objc2-ui-kit` to inspect the ObjC runtime directly from Rust.
 
 ### 6.1 Device manager
 
-Maintains a `DashMap<u32, DeviceHandle>` of discovered devices. Supports two discovery modes:
+Maintains a `DashMap<u32, DeviceHandle>` of discovered devices. Supports three discovery modes:
 
 - **USB**: Connects to usbmuxd, sends `Listen`, processes `Attached`/`Detached` events.
+- **Bonjour**: Browses for `_remo._tcp` services, resolves hostnames, and adds discovered simulators/Wi-Fi devices.
 - **Direct**: Connect to a known `host:port` (for simulators or Wi-Fi with known IP).
 
 ### 6.2 RPC client
@@ -283,10 +305,13 @@ Each device connection gets an `RpcClient` instance:
 
 | Command | Description | Example |
 |---|---|---|
-| `remo devices` | List USB-connected devices via usbmuxd | `remo devices` |
-| `remo call <addr> <cap> [params]` | Invoke a capability | `remo call 127.0.0.1:9930 navigate '{"route":"/home"}'` |
-| `remo list -a <addr>` | List registered capabilities | `remo list -a 127.0.0.1:9930` |
-| `remo watch -a <addr>` | Stream events from device | `remo watch -a 127.0.0.1:9930` |
+| `remo devices` | Auto-discover devices (USB + Bonjour) | `remo devices` |
+| `remo call -a <addr> <cap> [params]` | Invoke a capability | `remo call -a 127.0.0.1:51363 navigate '{"route":"/home"}'` |
+| `remo list -a <addr>` | List registered capabilities | `remo list -a 127.0.0.1:51363` |
+| `remo watch -a <addr>` | Stream events from device | `remo watch -a 127.0.0.1:51363` |
+| `remo tree -a <addr>` | Dump view hierarchy | `remo tree -a 127.0.0.1:51363 -m 3` |
+| `remo screenshot -a <addr>` | Capture screenshot to file | `remo screenshot -a 127.0.0.1:51363 -o shot.jpg` |
+| `remo info -a <addr>` | Show device and app info | `remo info -a 127.0.0.1:51363` |
 
 ---
 
@@ -294,16 +319,22 @@ Each device connection gets an `RpcClient` instance:
 
 A SwiftUI app demonstrating full SDK integration:
 
-**Pages**: Home (counter + greeting), Items (list with detail navigation), Settings (username field + debug info).
+**Pages**: Home (counter + toast + confetti), Items (list with add/delete), Activity Log (real-time log), Settings (accent color picker + debug info).
 
-**Registered capabilities**:
+The example app demonstrates both built-in and custom capabilities. Built-in capabilities (`__view_tree`, `__screenshot`, `__device_info`, `__app_info`) are available automatically. Custom registered capabilities include:
 
 | Capability | Params | Effect |
 |---|---|---|
-| `navigate` | `{"route": "/..."}` | Sets `currentRoute` on the store |
-| `state.get` | `{"key": "counter"}` | Returns the current value |
-| `state.set` | `{"key": "counter", "value": 42}` | Mutates the store (dispatched to main thread) |
 | `counter.increment` | `{"amount": 5}` | Increments counter by amount |
+| `counter.reset` | none | Resets counter to 0 |
+| `state.get` | `{"key": "counter"}` | Returns the current value |
+| `state.set` | `{"key": "counter", "value": 42}` | Mutates the store |
+| `items.add` | `{"item": "..."}` | Add item to list |
+| `items.remove` | `{"index": 0}` | Remove item by index |
+| `items.list` | none | List all items |
+| `toast.show` | `{"message": "..."}` | Show a toast overlay |
+| `confetti.fire` | none | Trigger confetti animation |
+| `accentColor.set` | `{"color": "red"}` | Change app accent color |
 
 ---
 
@@ -319,22 +350,31 @@ cargo build -p remo-cli --release
 ### 8.2 iOS static library
 
 ```bash
-./build-ios.sh release
-# Outputs:
-#   target/aarch64-apple-ios/release/libremo_sdk.a        (device)
-#   target/aarch64-apple-ios-sim/release/libremo_sdk.a    (simulator)
+# Fast local development:
+./build-ios.sh sim        # arm64 simulator only (debug)
+./build-ios.sh device     # arm64 device only (debug)
+
+# Full build:
+./build-ios.sh release    # all targets (arm64 device, arm64 sim, x86_64 sim) + universal sim binary
 ```
 
-The script also invokes `cbindgen` to regenerate `remo.h` if installed.
+Outputs an XCFramework at `swift/RemoSDK.xcframework/`.
 
-### 8.3 Xcode integration
+### 8.3 SPM distribution
 
-1. Add `RemoSwift` SPM package to the iOS project.
-2. Set **Library Search Paths** to the directory containing `libremo_sdk.a`.
-3. Set **Other Linker Flags**: `-lremo_sdk -lc++ -framework Security`.
-4. In `AppDelegate` or `@main App.init`: call `Remo.start()` and register capabilities.
+The release CI pipeline (`release.yml`) builds the XCFramework, zips it, and pushes to the [`remo-spm`](https://github.com/yi-jiang-applovin/remo-spm) repo as a binary SPM package. Consumer apps add the dependency:
 
-### 8.4 Tests
+```swift
+.package(url: "https://github.com/yi-jiang-applovin/remo-spm.git", from: "0.2.0")
+```
+
+### 8.4 Xcode integration
+
+1. Add the `remo-spm` SPM package dependency (or the local `RemoSwift` package for development).
+2. Register custom capabilities via `Remo.register(...)`. The server auto-starts on first API access — no explicit `Remo.start()` needed.
+3. Built-in capabilities (view tree, screenshot, device/app info) are available immediately — no registration needed.
+
+### 8.5 Tests
 
 ```bash
 cargo test --workspace    # Unit tests (codec, registry) + integration test
@@ -347,57 +387,62 @@ The integration test spins up a `RemoServer` on localhost, connects an `RpcClien
 - `__list_capabilities` built-in
 - Unknown capability returns `not_found`
 
+CI also runs `xcodebuild test` for the Swift package to verify the XCFramework + Swift wrapper compile and link correctly.
+
 ---
 
 ## 9. Current status & known gaps
 
-### 9.1 What is implemented (v0.1.0)
+### 9.1 What is implemented (v0.2.0)
 
-| Component | Status | Lines |
+| Component | Status |
+|---|---|
+| `remo-protocol` (messages + codec + tests) | Complete |
+| `remo-transport` (Connection + Listener) | Complete |
+| `remo-usbmuxd` (client, types, Listen, Connect) | Complete |
+| `remo-bonjour` (service registration + discovery) | Complete |
+| `remo-sdk` (server, registry, built-in capabilities, FFI) | Complete |
+| `remo-objc` (view tree, screenshot, device/app info, main-thread dispatch) | Complete |
+| `remo-desktop` (device manager w/ USB + Bonjour, RPC client) | Complete |
+| `remo-cli` (devices, call, list, watch, tree, screenshot, info) | Complete |
+| `RemoSwift` (FFI wrapper, debug-only) | Complete |
+| `RemoExample` (demo app w/ 4 tabs, 10+ capabilities) | Complete |
+| Integration test | Complete |
+| CI/CD pipeline (check, lint, test, build, release) | Complete |
+| SPM distribution (`remo-spm` binary package) | Complete |
+
+### 9.2 Resolved TODOs
+
+| ID | Issue | Resolution |
 |---|---|---|
-| `remo-protocol` (messages + codec + tests) | Complete | 267 |
-| `remo-transport` (Connection + Listener) | Complete | 100 |
-| `remo-usbmuxd` (client, types, Listen, Connect) | Complete | 348 |
-| `remo-sdk` (server, registry, FFI) | Complete | 408 |
-| `remo-objc` (view tree walker) | Partial | 131 |
-| `remo-desktop` (device manager, RPC client) | Partial | 238 |
-| `remo-cli` (devices, call, list, watch) | Complete | 145 |
-| `RemoSwift` (FFI wrapper) | Complete | 92 |
-| `RemoExample` (demo app) | Complete | 193 |
-| Integration test | Complete | 142 |
-| **Total** | | **~2,064** |
+| T-001 | `remo_stop()` is a no-op | **Fixed.** Shutdown via broadcast channel. |
+| T-002 | USB tunnel not wired to RPC | **Fixed.** `remo-transport` supports `UnixStream` via `IoStream` enum. |
+| T-005 | Only view tree implemented in `remo-objc` | **Fixed.** Added screenshot, device info, app info, main-thread dispatch. |
+| T-006 | No Bonjour/mDNS discovery | **Fixed.** `remo-bonjour` crate: iOS advertises, macOS browses. |
+| T-008 | `staticlib` not in Cargo.toml | **Fixed.** Feature-gated `crate-type = ["staticlib"]` in `remo-sdk`. |
+| T-012 | No CI pipeline | **Fixed.** GitHub Actions: check, fmt, clippy, test, iOS build, Swift integration. |
 
-### 9.2 Open TODOs
+### 9.3 Open TODOs
 
-#### P0 — ~~Must fix before first real-device test~~ Resolved
-
-| ID | Crate | Issue | Status |
-|---|---|---|---|
-| T-001 | `remo-sdk/ffi.rs` | `remo_stop()` is a no-op | **Fixed.** Shutdown handle stored in `RemoGlobal`; `remo_stop()` sends shutdown signal via broadcast channel. |
-| T-002 | `remo-desktop/device_manager.rs` | USB tunnel not wired to RPC | **Fixed.** `remo-transport` now supports `UnixStream` via internal `IoStream` enum. `connect_to_device()` frames the usbmuxd tunnel directly. |
-
-#### P1 — Needed for usable product
+#### P1 — Needed for full product
 
 | ID | Component | Issue | Detail |
 |---|---|---|---|
-| T-003 | `remo-transport` | No reconnection logic | If a device disconnects and reconnects, the client must detect the drop and re-establish. Add exponential backoff reconnect in `Connection` or `DeviceManager`. |
-| T-004 | `remo-sdk` | No event push from iOS | The `Event` message type is defined but nothing sends events yet. Need to expose `remo_emit_event(kind, payload_json)` in the FFI, and hook it into `@Observable` store's `withObservationTracking`. |
-| T-005 | `remo-objc` | Only view tree implemented | Missing: `performSelector` bridge, layer property reading, accessibility tree dump, `UIApplication` state queries. |
-| T-006 | `remo-desktop` | No Bonjour/mDNS discovery | Wi-Fi devices require manual IP entry. Should browse for `_remo._tcp` services. |
+| T-003 | `remo-transport` | No reconnection logic | If a device disconnects, the client should auto-reconnect with exponential backoff. |
+| T-004 | `remo-sdk` | No event push from iOS | The `Event` message type is defined but nothing sends events yet. Need `remo_emit_event()` in FFI. |
 | T-007 | `remo-cli` | `devices` command requires usbmuxd | Fails on machines without usbmuxd (Linux CI). Should gracefully handle missing socket. |
-| T-008 | `remo-sdk` | `staticlib` not in Cargo.toml | `crate-type = ["lib"]` only. For iOS builds, the user must pass `--crate-type staticlib` manually or we need a build script / feature to switch. |
 
 #### P2 — Nice to have
 
 | ID | Component | Issue | Detail |
 |---|---|---|---|
-| T-009 | `remo-desktop` | No macOS GUI | Only CLI exists. A SwiftUI macOS app with device list, view tree visualizer, and state inspector would be the "Lookin" experience. |
-| T-010 | `remo-sdk` | Capability middleware / hooks | Allow pre/post hooks on capability invocation (logging, auth, rate limiting). |
-| T-011 | `remo-protocol` | No binary protocol option | JSON is fine for now but adds overhead for large view tree snapshots. Consider MessagePack or protobuf as an opt-in codec. |
-| T-012 | Build | No CI pipeline | Need GitHub Actions with `cargo check`, `cargo test`, `cargo clippy`. iOS cross-compilation can run on macOS runners. |
-| T-013 | `remo-objc` | No SwiftUI view identity mapping | UIView tree doesn't map well to SwiftUI's declarative hierarchy. Could use `_printHierarchy()` or the accessibility tree as a better proxy. |
-| T-014 | `remo-sdk` | Thread safety audit for FFI callbacks | `SendPtr` wrapper is an unsafe escape hatch. Should document exactly what thread-safety guarantees Swift must provide, or switch to `dispatch_async` on the Swift side before calling back. |
-| T-015 | `remo-protocol` | No versioning / handshake | Client and server don't negotiate protocol version. First message should be a handshake with version + supported features. |
+| T-009 | `remo-desktop` | No macOS GUI | A SwiftUI macOS app with device list, view tree visualizer, and state inspector. |
+| T-010 | `remo-sdk` | Capability middleware / hooks | Pre/post hooks on capability invocation (logging, auth, rate limiting). |
+| T-011 | `remo-protocol` | No binary protocol option | Consider MessagePack or protobuf for large view tree / screenshot payloads. |
+| T-013 | `remo-objc` | No SwiftUI view identity mapping | UIView tree doesn't map well to SwiftUI's declarative hierarchy. |
+| T-014 | `remo-sdk` | Thread safety audit for FFI callbacks | `SendPtr` wrapper needs documentation or replacement. |
+| T-015 | `remo-protocol` | No versioning / handshake | Client and server don't negotiate protocol version. |
+| T-016 | `remo-objc` | View property modification | `__view_set` to modify UIView properties remotely (frame, hidden, alpha, etc.). |
 
 ---
 
@@ -419,16 +464,17 @@ The integration test spins up a `RemoServer` on localhost, connects an `RpcClien
 | `tracing` + `tracing-subscriber` | 0.1 / 0.3 | Structured logging |
 | `futures` | 0.3 | Stream/Sink utilities |
 | `dashmap` | 6.x | Concurrent capability registry |
+| `base64` | 0.22 | Base64 encoding for screenshot data |
 | `objc2` | 0.6 | ObjC FFI (iOS only) |
-| `objc2-foundation` | 0.3 | NSString, NSArray, etc. |
-| `objc2-ui-kit` | 0.3 | UIView, UIWindow, etc. (optional) |
+| `objc2-foundation` | 0.3 | NSString, NSArray, NSRect, etc. |
+| `objc2-ui-kit` | 0.3 | UIView, UIWindow, UIDevice, etc. (optional) |
 
 ### 10.2 Swift
 
 | Dependency | Source | Used for |
 |---|---|---|
-| `CRemo` | Local (modulemap + libremo_sdk.a) | Rust FFI binding |
-| `RemoSwift` | Local SPM package | Swift wrapper API |
+| `CRemo` | Binary target in `RemoSDK.xcframework` | Rust FFI binding |
+| `RemoSwift` | Local SPM package (or via `remo-spm` remote) | Swift wrapper API |
 
 ### 10.3 Build tools
 
@@ -436,8 +482,7 @@ The integration test spins up a `RemoServer` on localhost, connects an `RpcClien
 |---|---|---|
 | Rust stable toolchain | Yes | Compilation |
 | Xcode + iOS SDK | Yes (for iOS) | iOS target, Swift compilation |
-| `cbindgen` | Optional | Auto-generate `remo.h` from Rust |
-| `rustup target add aarch64-apple-ios` | Yes (for iOS) | Cross-compilation |
+| `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios` | Yes (for iOS) | Cross-compilation targets |
 
 ---
 
@@ -446,11 +491,17 @@ The integration test spins up a `RemoServer` on localhost, connects an `RpcClien
 ```
 remo/
 ├── Cargo.toml                              # Workspace root
-├── Makefile                                # build, check, test, cli, ios, clean
+├── Makefile                                # setup, build, check, test, cli, ios, ios-sim, ios-device, fmt, lint
 ├── README.md                               # Overview + quick start
-├── build-ios.sh                            # Build iOS static lib + generate header
-├── cbindgen.toml                           # Header generation config
+├── SPEC.md                                 # This document
+├── build-ios.sh                            # Build iOS XCFramework (sim/device/debug/release modes)
 ├── rust-toolchain.toml                     # Pin stable + iOS targets
+├── .githooks/
+│   └── pre-commit                          # cargo fmt + clippy pre-commit hook
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                          # PR checks: fmt, clippy, test, iOS build, Swift integration
+│       └── release.yml                     # Tag-triggered: build XCFramework, push to remo-spm
 ├── tests/
 │   └── integration.rs                      # Full round-trip server + client test
 ├── crates/
@@ -464,7 +515,7 @@ remo/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── connection.rs               # Connection: send/recv over framed TCP
+│   │       ├── connection.rs               # Connection: send/recv over framed TCP/Unix
 │   │       └── listener.rs                 # Listener: async TCP accept loop
 │   ├── remo-usbmuxd/
 │   │   ├── Cargo.toml
@@ -472,69 +523,93 @@ remo/
 │   │       ├── lib.rs
 │   │       ├── types.rs                    # UsbmuxHeader, Device, DeviceAttached, etc.
 │   │       └── client.rs                   # UsbmuxClient (Listen, Connect), list_devices()
+│   ├── remo-bonjour/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs                      # ServiceRegistration, ServiceBrowser, TxtRecord
+│   │       └── ...
 │   ├── remo-sdk/
-│   │   ├── Cargo.toml                      # features: ios (enables remo-objc/uikit)
+│   │   ├── Cargo.toml                      # features: ios (enables remo-objc/uikit + bonjour)
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── registry.rs                 # CapabilityRegistry (DashMap) + tests
-│   │       ├── server.rs                   # RemoServer (accept loop + dispatch)
+│   │       ├── server.rs                   # RemoServer + register_builtins() + built-in capabilities
 │   │       └── ffi.rs                      # C ABI: remo_start, remo_register_capability, etc.
 │   ├── remo-objc/
 │   │   ├── Cargo.toml                      # features: uikit (optional objc2-ui-kit)
 │   │   └── src/
-│   │       ├── lib.rs
-│   │       └── view_tree.rs                # ViewNode, snapshot_view_tree() + stubs
+│   │       ├── lib.rs                      # Re-exports all modules
+│   │       ├── main_thread.rs              # GCD dispatch: run_on_main_sync()
+│   │       ├── view_tree.rs                # ViewNode, snapshot_view_tree()
+│   │       ├── screenshot.rs               # capture_screenshot() → JPEG/PNG bytes
+│   │       └── device_info.rs              # get_device_info(), get_app_info()
 │   ├── remo-desktop/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── rpc_client.rs               # RpcClient (async call w/ timeout + event stream)
-│   │       └── device_manager.rs           # DeviceManager (usbmuxd discovery + connection)
+│   │       └── device_manager.rs           # DeviceManager (USB + Bonjour discovery)
 │   └── remo-cli/
 │       ├── Cargo.toml
 │       └── src/
-│           └── main.rs                     # CLI: devices, call, list, watch
-└── swift/
-    ├── RemoSwift/
-    │   ├── Package.swift                   # SPM package
-    │   └── Sources/
-    │       ├── CRemo/
-    │       │   └── module.modulemap        # Links libremo_sdk.a
-    │       └── RemoSwift/
-    │           ├── include/
-    │           │   └── remo.h              # C header for FFI
-    │           └── Remo.swift              # Swift wrapper: Remo.start(), Remo.register()
-    └── RemoExample/
-        └── RemoExample/
-            └── RemoExampleApp.swift         # Demo app: 3 tabs, 4 capabilities
+│           └── main.rs                     # CLI: devices, call, list, watch, tree, screenshot, info
+├── swift/
+│   ├── RemoSwift/
+│   │   ├── Package.swift                   # SPM package
+│   │   └── Sources/
+│   │       └── RemoSwift/
+│   │           ├── include/
+│   │           │   └── remo.h              # C header for FFI (manually maintained)
+│   │           └── Remo.swift              # Swift wrapper: auto-start + Remo.register()
+│   └── RemoSDK.xcframework/               # Built by build-ios.sh (gitignored)
+└── examples/ios/
+    ├── RemoExample.xcworkspace/
+    ├── RemoExample.xcodeproj/
+    ├── RemoExample/
+    │   └── RemoExampleApp.swift            # App entry point
+    └── RemoExamplePackage/
+        ├── Package.swift                   # SPM: local path (dev) or remote binary (release)
+        ├── Sources/RemoExampleFeature/
+        │   └── ContentView.swift           # 4 tabs, 10+ custom capabilities
+        └── Tests/
+            └── RemoExampleFeatureTests/    # Swift integration tests
 ```
 
 ---
 
 ## 12. Milestones
 
-### M1: Simulator loopback (current state → first working demo)
-- Fix T-001 (`remo_stop`)
-- Fix T-008 (staticlib crate type)
-- Verify: build CLI + iOS lib, run example on simulator, call capabilities from terminal
+### ~~M1: Simulator loopback~~ Done (v0.1.0)
+- Full RPC round-trip on simulator
+- CLI: devices, call, list, watch
 
-### M2: Real device over USB
-- Fix T-002 (generic transport over UnixStream)
-- Test usbmuxd tunnel end-to-end with a real iPhone
+### ~~M2: Real device over USB~~ Done (v0.1.0)
+- usbmuxd tunnel end-to-end
+- Generic transport over UnixStream
 
-### M3: Event streaming
+### ~~M3: Auto-discovery + Multi-simulator~~ Done (v0.2.0)
+- Bonjour service registration and browsing
+- Auto-assigned ports, multiple simultaneous simulators
+- Debug-only SDK (`#if DEBUG`)
+
+### ~~M4: Built-in introspection~~ Done (v0.2.0)
+- View tree, screenshot, device info, app info — all auto-registered
+- GCD main-thread dispatch for safe UIKit access
+- CLI: tree, screenshot, info commands
+
+### ~~M5: CI/CD + SPM distribution~~ Done (v0.2.0)
+- GitHub Actions CI (check, fmt, clippy, test, iOS build, Swift integration)
+- Automated release pipeline → `remo-spm` binary SPM package
+
+### M6: Event streaming (next)
 - Implement T-004 (event push FFI + observation tracking)
 - `remo watch` receives live state changes
 
-### M4: Enhanced inspection
-- Implement T-005 (more remo-objc capabilities)
-- Add view tree, accessibility tree, app state queries as built-in capabilities
-
-### M5: macOS GUI
+### M7: macOS GUI
 - Implement T-009 (SwiftUI desktop app)
 - Device list, live view tree, state editor, event log
 
-### M6: Production readiness
-- Implement T-003 (reconnection), T-012 (CI), T-015 (handshake)
+### M8: Production readiness
+- Implement T-003 (reconnection), T-015 (handshake)
+- View property modification (T-016)
 - Audit T-014 (thread safety)
-- Documentation, README polish, release packaging

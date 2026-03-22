@@ -186,6 +186,9 @@
 			);
 			mainGroup = 8B41F63C2DEDD0D5001A66F9;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				8B41F6902DEDD300001A66F9 /* XCLocalSwiftPackageReference "RemoExamplePackage" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 8B41F6462DEDD0D5001A66F9 /* Products */;
 			projectDirPath = "";
@@ -468,6 +471,13 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		8B41F6902DEDD300001A66F9 /* XCLocalSwiftPackageReference "RemoExamplePackage" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = RemoExamplePackage;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		8B41F6822DEDD23B001A66F9 /* RemoExampleFeature */ = {

@@ -37,7 +37,7 @@ mod apple {
     use objc2::runtime::AnyObject;
     use objc2::{msg_send, MainThreadMarker};
     use objc2_foundation::NSString;
-    use objc2_ui_kit::{UIApplication, UIView, UIWindow};
+    use objc2_ui_kit::{UIApplication, UIView};
 
     /// Snapshot the entire view tree starting from the key window.
     ///
@@ -46,6 +46,7 @@ mod apple {
     pub unsafe fn snapshot_key_window() -> Option<ViewNode> {
         let mtm = MainThreadMarker::new_unchecked();
         let app = UIApplication::sharedApplication(mtm);
+        #[allow(deprecated)]
         let windows = app.windows();
         let key_window = windows.iter().find(|w| w.isKeyWindow());
 

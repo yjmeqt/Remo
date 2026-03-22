@@ -6,6 +6,7 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use serde_json::Value;
@@ -15,6 +16,8 @@ use tracing::info;
 
 use crate::registry::CapabilityRegistry;
 use crate::server::RemoServer;
+
+static STARTED: AtomicBool = AtomicBool::new(false);
 
 /// Global state shared across FFI calls.
 struct RemoGlobal {
@@ -40,12 +43,11 @@ fn global() -> &'static std::sync::Mutex<RemoGlobal> {
     })
 }
 
-/// Start the Remo TCP server on the given port.
-///
-/// # Safety
-/// Must be called once before any other remo function.
-#[no_mangle]
-pub unsafe extern "C" fn remo_start(port: u16) {
+fn start_server(port: u16) {
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
     let _ = tracing_subscriber::fmt()
         .with_env_filter("remo=debug")
         .try_init();
@@ -69,9 +71,8 @@ pub unsafe extern "C" fn remo_start(port: u16) {
         });
 
         (port_rx, rt_handle)
-    }; // lock released here
+    };
 
-    // Wait for the server to bind — no lock held, so other FFI calls won't deadlock.
     let actual_port = rt_handle.block_on(async {
         tokio::time::timeout(std::time::Duration::from_secs(2), port_rx)
             .await
@@ -79,7 +80,6 @@ pub unsafe extern "C" fn remo_start(port: u16) {
             .and_then(Result::ok)
     });
 
-    // Re-acquire lock to store results.
     let mut lock = g.lock().unwrap();
 
     if let Some(p) = actual_port {
@@ -98,7 +98,21 @@ pub unsafe extern "C" fn remo_start(port: u16) {
         }
     }
 
-    info!(port = actual_port.unwrap_or(port), "remo started via FFI");
+    info!(port = actual_port.unwrap_or(port), "remo started");
+}
+
+/// Start the Remo TCP server on the given port.
+///
+/// With zero-config auto-start, calling this is optional. The Swift wrapper
+/// calls it lazily on first API access (port 0 on simulator, 9930 on device).
+/// Subsequent calls are no-ops; the server only starts once.
+///
+/// # Safety
+/// Must be called from a single thread (the Swift wrapper guarantees this
+/// via `static let` initialization).
+#[no_mangle]
+pub unsafe extern "C" fn remo_start(port: u16) {
+    start_server(port);
 }
 
 /// Stop the Remo server gracefully.

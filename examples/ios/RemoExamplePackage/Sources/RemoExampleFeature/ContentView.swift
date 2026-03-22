@@ -60,8 +60,6 @@ public final class AppStore: @unchecked Sendable {
 // MARK: - Remo Setup
 
 public func setupRemo(store: AppStore) {
-    Remo.start(port: 0)
-
     func logged(
         _ name: String,
         handler: @escaping ([String: Any]) -> [String: Any]

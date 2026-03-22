@@ -8,35 +8,48 @@ import CRemo
 
 /// Remo: remote control bridge for iOS apps.
 ///
+/// **Zero-config**: The server starts automatically when the library is loaded.
+/// Simulator builds use a random port (to support multiple instances);
+/// device builds use the well-known port 9930 (for USB tunnel access).
+///
 /// In Release builds, all methods are no-ops. Remo is a debug-only tool and
 /// must never run in production — it opens an unauthenticated TCP port.
 ///
-/// Usage:
+/// Usage — just register capabilities; no `start()` needed:
 /// ```swift
 /// Remo.register("navigate") { params in
 ///     let route = params["route"] as? String ?? "/"
 ///     Navigator.shared.push(route)
 ///     return ["status": "ok"]
 /// }
-/// Remo.start()
 /// ```
 public final class Remo {
     private init() {}
 
-    /// Default port the Remo server listens on.
+    /// Default port the Remo server listens on (device builds).
     public static let defaultPort: UInt16 = 9930
 
+    /// Lazy auto-start: the server starts on first access to any Remo API.
+    /// Simulator → random port (avoids collisions); device → 9930 (USB tunnel).
+    private static let _ensureStarted: Bool = {
+        #if targetEnvironment(simulator)
+        remo_start(0)
+        #else
+        remo_start(defaultPort)
+        #endif
+        return true
+    }()
+
     /// The actual port the server is listening on.
-    /// Returns 0 if the server has not started.
     public static var port: UInt16 {
-        remo_get_port()
+        _ = _ensureStarted
+        return remo_get_port()
     }
 
-    /// Start the embedded TCP server.
+    /// Manually start the server on a specific port.
     ///
-    /// Pass `port: 0` for automatic port assignment (recommended for
-    /// multi-simulator setups). The actual port is available via `Remo.port`
-    /// after start, and is advertised via Bonjour automatically.
+    /// Normally unnecessary — the server auto-starts on first API access.
+    /// The Rust side ignores subsequent calls; the server only starts once.
     public static func start(port: UInt16 = defaultPort) {
         remo_start(port)
     }
@@ -50,6 +63,7 @@ public final class Remo {
     ///
     /// The handler receives a JSON dictionary and must return a JSON-serializable dictionary.
     public static func register(_ name: String, handler: @escaping ([String: Any]) -> [String: Any]) {
+        _ = _ensureStarted
         let handlerBox = HandlerBox(handler: handler)
         let context = Unmanaged.passRetained(handlerBox).toOpaque()
 
@@ -60,6 +74,7 @@ public final class Remo {
 
     /// List capabilities registered on this device.
     public static func listCapabilities() -> [String] {
+        _ = _ensureStarted
         guard let ptr = remo_list_capabilities() else { return [] }
         defer { remo_free_string(ptr) }
 
@@ -112,11 +127,11 @@ private let swiftCapabilityTrampoline: remo_capability_callback = { context, par
 #else
 
 // Release build: empty stubs so call sites compile but do nothing.
-// The Rust static library symbols are never referenced at runtime.
 public final class Remo {
     private init() {}
 
     public static let defaultPort: UInt16 = 9930
+    public static var port: UInt16 { 0 }
     public static func start(port: UInt16 = defaultPort) {}
     public static func stop() {}
     public static func register(_ name: String, handler: @escaping ([String: Any]) -> [String: Any]) {}

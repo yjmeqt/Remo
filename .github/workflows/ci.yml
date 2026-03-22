@@ -14,7 +14,7 @@ jobs:
     name: Check & Lint
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -26,21 +26,21 @@ jobs:
     name: Test
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace
 
-  build-ios:
-    name: Build iOS XCFramework + Swift Check
+  swift-test:
+    name: Swift Integration Test (arm64 sim)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
-      - name: Build XCFramework
-        run: ./build-ios.sh release
-      - name: Verify Swift integration
+          targets: aarch64-apple-ios-sim
+      - name: Build simulator XCFramework
+        run: ./build-ios.sh sim
+      - name: Run Swift tests
         env:
           REMO_LOCAL: "1"
         run: |
@@ -49,3 +49,14 @@ jobs:
             -scheme RemoExample \
             -destination 'platform=iOS Simulator,name=iPhone 17' \
             -skipPackagePluginValidation
+
+  build-ios:
+    name: Build iOS (device + x86_64 sim)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, x86_64-apple-ios
+      - run: cargo build -p remo-sdk --features ios --target aarch64-apple-ios --release
+      - run: cargo build -p remo-sdk --features ios --target x86_64-apple-ios --release
