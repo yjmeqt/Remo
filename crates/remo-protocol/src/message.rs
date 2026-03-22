@@ -19,6 +19,11 @@ pub enum Message {
     /// iOS → macOS: unsolicited push event.
     #[serde(rename = "event")]
     Event(Event),
+
+    /// Binary response — not JSON-serialized; uses binary frame wire format.
+    /// Serde skip: encoded/decoded manually by RemoCodec.
+    #[serde(skip)]
+    BinaryResponse(BinaryResponse),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +77,19 @@ pub struct Event {
     pub payload: serde_json::Value,
 }
 
+/// A response carrying binary payload (e.g. screenshot image bytes).
+///
+/// Not serialized as JSON — uses the binary frame wire format.
+#[derive(Debug, Clone)]
+pub struct BinaryResponse {
+    /// Matches the `id` of the originating `Request`.
+    pub id: MessageId,
+    /// Small JSON metadata (format, dimensions, etc.).
+    pub metadata: serde_json::Value,
+    /// Raw binary payload (e.g. JPEG/PNG bytes).
+    pub data: Vec<u8>,
+}
+
 // ---------------------------------------------------------------------------
 // Convenience constructors
 // ---------------------------------------------------------------------------
@@ -111,5 +129,11 @@ impl Event {
             kind: kind.into(),
             payload,
         }
+    }
+}
+
+impl BinaryResponse {
+    pub fn new(id: MessageId, metadata: serde_json::Value, data: Vec<u8>) -> Self {
+        Self { id, metadata, data }
     }
 }
