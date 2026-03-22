@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 
-use base64::Engine;
 use remo_protocol::{ErrorCode, Message, Request, Response};
 use remo_transport::{Connection, Listener};
 use tokio::sync::{broadcast, oneshot};
@@ -123,7 +122,7 @@ fn register_builtins(registry: &CapabilityRegistry) {
         Ok(serde_json::to_value(tree).unwrap_or_default())
     });
 
-    registry.register_sync("__screenshot", |params| {
+    registry.register_sync_raw("__screenshot", |params| {
         let format = params
             .get("format")
             .and_then(serde_json::Value::as_str)
@@ -139,17 +138,16 @@ fn register_builtins(registry: &CapabilityRegistry) {
         });
 
         match result {
-            Some(sr) => {
-                let b64 = base64::engine::general_purpose::STANDARD.encode(&sr.bytes);
-                Ok(serde_json::json!({
-                    "image": b64,
+            Some(sr) => Ok(crate::registry::HandlerOutput::Binary {
+                metadata: serde_json::json!({
                     "format": sr.format,
                     "width": sr.width,
                     "height": sr.height,
                     "scale": sr.scale,
                     "size": sr.bytes.len(),
-                }))
-            }
+                }),
+                data: sr.bytes,
+            }),
             None => Err(crate::registry::HandlerError::Internal(
                 "screenshot capture failed".into(),
             )),
@@ -221,8 +219,8 @@ async fn handle_connection(mut conn: Connection, registry: CapabilityRegistry) {
 
         match msg {
             Message::Request(req) => {
-                let response = dispatch_request(&registry, req).await;
-                if let Err(e) = conn.send(Message::Response(response)).await {
+                let msg = dispatch_request(&registry, req).await;
+                if let Err(e) = conn.send(msg).await {
                     warn!(%peer, "write error: {e}");
                     break;
                 }
@@ -234,7 +232,7 @@ async fn handle_connection(mut conn: Connection, registry: CapabilityRegistry) {
     }
 }
 
-async fn dispatch_request(registry: &CapabilityRegistry, req: Request) -> Response {
+async fn dispatch_request(registry: &CapabilityRegistry, req: Request) -> Message {
     let Request {
         id,
         capability,
@@ -242,18 +240,23 @@ async fn dispatch_request(registry: &CapabilityRegistry, req: Request) -> Respon
     } = req;
 
     match registry.invoke(&capability, params).await {
-        Some(Ok(data)) => Response::ok(id, data),
+        Some(Ok(output)) => match output {
+            crate::registry::HandlerOutput::Json(data) => Message::Response(Response::ok(id, data)),
+            crate::registry::HandlerOutput::Binary { metadata, data } => {
+                Message::BinaryResponse(remo_protocol::BinaryResponse::new(id, metadata, data))
+            }
+        },
         Some(Err(e)) => {
             let code = match &e {
                 crate::registry::HandlerError::InvalidParams(_) => ErrorCode::InvalidParams,
                 crate::registry::HandlerError::Internal(_) => ErrorCode::Internal,
             };
-            Response::error(id, code, e.to_string())
+            Message::Response(Response::error(id, code, e.to_string()))
         }
-        None => Response::error(
+        None => Message::Response(Response::error(
             id,
             ErrorCode::NotFound,
             format!("capability '{capability}' not found"),
-        ),
+        )),
     }
 }

@@ -20,10 +20,17 @@ pub enum RpcError {
     Closed,
 }
 
+/// Result of an RPC call — either a JSON response or a binary response.
+#[derive(Debug)]
+pub enum RpcResponse {
+    Json(Response),
+    Binary(remo_protocol::BinaryResponse),
+}
+
 /// An RPC client connected to a single iOS device.
 pub struct RpcClient {
     writer: Arc<Mutex<remo_transport::WriteHalf>>,
-    pending: Arc<Mutex<HashMap<MessageId, oneshot::Sender<Response>>>>,
+    pending: Arc<Mutex<HashMap<MessageId, oneshot::Sender<RpcResponse>>>>,
     _event_tx: mpsc::Sender<remo_protocol::Event>,
 }
 
@@ -44,7 +51,7 @@ impl RpcClient {
     ) -> Result<Self, RpcError> {
         let (reader, writer) = conn.split();
         let writer = Arc::new(Mutex::new(writer));
-        let pending: Arc<Mutex<HashMap<MessageId, oneshot::Sender<Response>>>> =
+        let pending: Arc<Mutex<HashMap<MessageId, oneshot::Sender<RpcResponse>>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         // Background read loop — only holds the reader, never blocks the writer.
@@ -59,9 +66,17 @@ impl RpcClient {
                         Ok(Some(Message::Response(resp))) => {
                             let mut p = pending_r.lock().await;
                             if let Some(tx) = p.remove(&resp.id) {
-                                let _ = tx.send(resp);
+                                let _ = tx.send(RpcResponse::Json(resp));
                             } else {
                                 warn!(id = %resp.id, "orphan response");
+                            }
+                        }
+                        Ok(Some(Message::BinaryResponse(br))) => {
+                            let mut p = pending_r.lock().await;
+                            if let Some(tx) = p.remove(&br.id) {
+                                let _ = tx.send(RpcResponse::Binary(br));
+                            } else {
+                                warn!(id = %br.id, "orphan binary response");
                             }
                         }
                         Ok(Some(Message::Event(evt))) => {
@@ -89,7 +104,7 @@ impl RpcClient {
         capability: impl Into<String>,
         params: serde_json::Value,
         timeout: Duration,
-    ) -> Result<Response, RpcError> {
+    ) -> Result<RpcResponse, RpcError> {
         let req = Request::new(capability, params);
         let id = req.id;
 

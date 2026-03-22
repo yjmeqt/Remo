@@ -6,8 +6,21 @@ use dashmap::DashMap;
 use serde_json::Value;
 use tracing::debug;
 
+/// Output from a capability handler — either JSON or binary.
+#[derive(Debug, Clone)]
+pub enum HandlerOutput {
+    Json(Value),
+    Binary { metadata: Value, data: Vec<u8> },
+}
+
+impl From<Value> for HandlerOutput {
+    fn from(v: Value) -> Self {
+        HandlerOutput::Json(v)
+    }
+}
+
 /// Result of a capability handler invocation.
-pub type HandlerResult = Result<Value, HandlerError>;
+pub type HandlerResult = Result<HandlerOutput, HandlerError>;
 
 /// A boxed async handler function.
 pub type BoxedHandler =
@@ -45,13 +58,29 @@ impl CapabilityRegistry {
         self.handlers.insert(name, handler);
     }
 
-    /// Register a synchronous capability handler.
+    /// Register a synchronous capability handler (returns JSON).
     pub fn register_sync<F>(&self, name: impl Into<String>, handler: F)
+    where
+        F: Fn(Value) -> Result<Value, HandlerError> + Send + Sync + 'static,
+    {
+        let name = name.into();
+        debug!(capability = %name, "registered (sync)");
+        let handler: BoxedHandler = Arc::new(move |params| {
+            Box::pin(std::future::ready(match handler(params) {
+                Ok(v) => Ok(HandlerOutput::Json(v)),
+                Err(e) => Err(e),
+            }))
+        });
+        self.handlers.insert(name, handler);
+    }
+
+    /// Register a synchronous handler returning raw HandlerOutput (JSON or binary).
+    pub fn register_sync_raw<F>(&self, name: impl Into<String>, handler: F)
     where
         F: Fn(Value) -> HandlerResult + Send + Sync + 'static,
     {
         let name = name.into();
-        debug!(capability = %name, "registered (sync)");
+        debug!(capability = %name, "registered (sync raw)");
         let handler: BoxedHandler =
             Arc::new(move |params| Box::pin(std::future::ready(handler(params))));
         self.handlers.insert(name, handler);
@@ -89,8 +118,11 @@ mod tests {
         let reg = CapabilityRegistry::new();
         reg.register_sync("ping", |_| Ok(serde_json::json!({"pong": true})));
 
-        let result = reg.invoke("ping", Value::Null).await.unwrap().unwrap();
-        assert_eq!(result["pong"], true);
+        let output = reg.invoke("ping", Value::Null).await.unwrap().unwrap();
+        match output {
+            HandlerOutput::Json(v) => assert_eq!(v["pong"], true),
+            _ => panic!("expected Json output"),
+        }
     }
 
     #[tokio::test]
