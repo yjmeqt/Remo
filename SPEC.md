@@ -5,9 +5,11 @@
 
 ## 1. Vision
 
-Remo is infrastructure for AI-driven iOS development. It bridges macOS and iOS over RPC, giving AI coding agents the eyes and hands they need to autonomously build, test, and debug iOS apps — closing the write → test → fix loop that has historically required human interaction on the iOS platform.
+Remo is infrastructure for **agentic iOS development**. It gives AI coding agents the eyes and hands they need to autonomously build, test, and debug iOS apps — closing the write → build → test → fix loop that has historically required human interaction on the iOS platform.
 
-The iOS app embeds a lightweight SDK that starts a TCP server and advertises itself via Bonjour. Any client — an AI agent, a CLI tool, or a future GUI — can discover the device, inspect the view hierarchy, take screenshots, read/write state, and invoke custom capabilities. The agent writes code, triggers a build, then uses Remo to verify the result on a real simulator or device — all without leaving the terminal.
+The core idea: iOS developers register **capabilities** (named Swift handlers) via the Remo SDK. AI agents discover real devices (USB) and simulators, invoke those capabilities to manipulate app state or trigger actions, then **verify the result** via screenshot or captured video. The agent doesn't guess whether its code change worked — it looks at the screen, just like a human developer would.
+
+The SDK starts a TCP server inside the app. Real devices are discovered via USB (usbmuxd), simulators via Bonjour/mDNS. Any client — an AI agent, a CLI tool, or a web dashboard — can discover the device, call capabilities, inspect the view tree, capture screenshots, or record video (useful for reviewing animations). This enables a fully autonomous loop: agent writes code → triggers build → calls Remo to verify → iterates.
 
 ### 1.1 Core principles
 
@@ -15,15 +17,15 @@ The iOS app embeds a lightweight SDK that starts a TCP server and advertises its
 - **Rust-heavy**: All protocol, transport, server, registry, and ObjC bridge logic is written in Rust. Swift is a thin shell for UI and FFI callbacks.
 - **Capability-oriented**: iOS apps don't expose a fixed API. Instead, developers register named handlers at runtime. Agents (or humans) discover and call them.
 - **Multi-device**: A single macOS process can manage multiple iOS devices (real or simulated) simultaneously through independent connections.
-- **Transport-agnostic**: USB (via usbmuxd), simulator (localhost TCP), and Wi-Fi (Bonjour discovery) all converge on the same framed TCP protocol.
+- **Transport-agnostic**: USB (via usbmuxd) for real devices and localhost TCP for simulators converge on the same framed TCP protocol. Wi-Fi support is planned but not primary.
 
 ### 1.2 Key use cases
 
-1. **AI Agent development loop**: Agents discover devices, invoke capabilities, inspect UI via view tree, and take screenshots — enabling autonomous write → build → test → fix cycles for iOS development without human interaction.
-2. **Remote state manipulation**: Read/write values in an app's `@Observable` store from the Mac. Change a counter, swap a username, inject test data — the iOS UI reacts immediately.
-3. **Remote navigation**: Push a route, pop a stack, switch tabs — all from a CLI command or agent call.
-4. **Visual verification**: Take screenshots and inspect the view hierarchy as JSON for automated UI validation — essential for agents to confirm their code changes produce the correct visual output.
-5. **Custom capabilities**: App developers register arbitrary handlers. Agents can call any of them to exercise app-specific behavior.
+1. **Agentic iOS development loop**: The primary use case. An AI agent writes Swift code, triggers a build, then uses Remo to verify the result: invoke capabilities → screenshot or captured video → decide if the UI is correct → iterate. No human in the loop.
+2. **Capability registration**: iOS developers register named Swift handlers (capabilities). Agents discover and invoke them at runtime — read CoreData, toggle feature flags, navigate routes, inject test data. The capability system is the bridge between agent intent and app behavior.
+3. **Visual verification**: Screenshots and captured video let agents **see what the user sees** after every action. Screenshots for static UI checks; video recording for reviewing animations and transitions.
+4. **Remote state manipulation**: Read/write values in an app's `@Observable` store from the Mac. Change a counter, swap a username, inject test data — the iOS UI reacts immediately.
+5. **Remote navigation**: Push a route, pop a stack, switch tabs — all from a CLI command or agent call.
 6. **Event streaming**: iOS pushes events (state changes, navigation events, logs) to macOS in real time.
 
 ---

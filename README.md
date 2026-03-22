@@ -1,62 +1,58 @@
 # Remo
 
-**Infrastructure for AI-driven iOS development.**
+**Infrastructure for agentic iOS development.**
 
-Remo bridges macOS and iOS over RPC, giving AI coding agents the eyes and hands they need to autonomously build, test, and debug iOS apps. Embed the SDK, and any agent (or human) can discover the device, inspect the view tree, take screenshots, read state, and invoke custom capabilities — closing the write → test → fix loop without leaving the terminal.
+Remo gives AI coding agents the **eyes** and **hands** they need to autonomously develop iOS apps. Embed the SDK, register capabilities in Swift, and any agent can discover real devices (USB) and simulators, invoke those capabilities, then **verify the result** via screenshot or captured video — closing the write → build → test → fix loop entirely from code.
 
 ```
-$ remo tree -a 127.0.0.1:51363 -m 2
-UIWindow (0, 0, 402x874)
-  UITransitionView (0, 0, 402x874)
-    UIDropShadowView (0, 0, 402x874)
-      UILayoutContainerView (0, 0, 402x874) (+42 children)
+# Agent writes code, triggers a build, then verifies via Remo:
 
-$ remo screenshot -a 127.0.0.1:51363 -o screen.jpg
-Screenshot saved to screen.jpg (
-131
- KB, 1206x2622 @3x)
-
-$ remo call -a 127.0.0.1:51363 counter.increment '{"amount":5}'
-{"status":"ok","data":{"previous":0,"current":5}}
+remo devices                                            # discover real devices (USB) & simulators
+remo call -a <addr> counter.increment '{"amount":5}'    # invoke a capability
+remo screenshot -a <addr> -o after.jpg                  # capture the result
+remo mirror -a <addr> --save recording.mp4              # or record video for animation review
+# → Agent compares before/after screenshots to confirm the UI is correct
 ```
+
+The core loop: **agent writes code → builds → calls Remo capabilities → takes a screenshot or reviews captured video → decides if the change is correct → iterates.** No human in the loop.
 
 <!-- TODO: add a demo GIF here showing agent + terminal + simulator side by side -->
 
 ## Why Remo?
 
-- **Built for AI agents.** Agents can discover devices, invoke capabilities, inspect the UI, and take screenshots — enabling autonomous write → test → fix loops for iOS development. No human interaction needed.
-- **Zero-config introspection.** View tree, screenshot, device info, and app info are available out of the box — no registration required. Embed the SDK, and agents can see everything immediately.
-- **Extensible.** Register any custom handler — read CoreData, toggle feature flags, navigate routes, trigger deeplinks. If you can write it in Swift, an agent can call it.
-- **Instant feedback.** Mutation → UI update in milliseconds, over USB or Wi-Fi.
-- **Rust-powered.** Protocol, transport, server, and ObjC bridge are all Rust. Swift is a thin FFI wrapper.
+- **Agent-first.** Every API is designed for programmatic access. Agents discover real devices (USB) and simulators, invoke capabilities, and verify results — enabling fully autonomous write → test → fix cycles for iOS.
+- **Extensible capabilities.** Developers register named handlers in Swift. Agents discover and call them at runtime — read CoreData, toggle feature flags, navigate routes, inject test data. If you can write it in Swift, an agent can call it.
+- **Visual verification.** Screenshots and captured video let agents **see what the user sees** after every action. Screenshots for static UI checks; video recording for reviewing animations and transitions.
+- **Zero-config introspection.** View tree, screenshot, device info, and app info work out of the box — no registration required.
+- **Instant feedback.** Capability call → UI update → screenshot capture in milliseconds, over USB or localhost.
 - **Debug-only by default.** The SDK compiles to no-ops in Release builds (`#if DEBUG`), so it never ships to production.
 
 ## How It Works
 
 ```
-┌──────────────────────────────────┐
-│  macOS                           │
-│  remo CLI (Rust)                 │
-│  ├── Device discovery (Bonjour)  │
-│  ├── USB discovery (usbmuxd)    │
-│  └── RPC client                  │
-└──────────┬───────────────────────┘
-           │ TCP (USB tunnel / Wi-Fi / localhost)
-┌──────────▼───────────────────────┐
-│  iOS                             │
-│  remo-sdk (Rust static lib)      │
-│  ├── TCP server (tokio)          │
-│  ├── Capability registry         │
-│  ├── Bonjour advertisement       │
-│  ├── Built-in introspection      │
-│  └── ObjC bridge (objc2)         │
-│  ── FFI boundary ──              │
-│  RemoSwift (Swift wrapper)       │
-│  Your app registers handlers     │
-└──────────────────────────────────┘
+┌──────────────────────────────────────┐
+│  macOS                               │
+│  remo CLI / AI agent                 │
+│  ├── USB discovery (usbmuxd)        │
+│  ├── Simulator discovery (Bonjour)   │
+│  └── RPC client                      │
+└──────────┬───────────────────────────┘
+           │ TCP (USB tunnel / localhost)
+┌──────────▼───────────────────────────┐
+│  iOS                                 │
+│  remo-sdk (Rust static lib)          │
+│  ├── TCP server (tokio)              │
+│  ├── Capability registry             │
+│  ├── Bonjour advertisement           │
+│  ├── Built-in: view tree, screenshot │
+│  └── ObjC bridge (objc2)             │
+│  ── FFI boundary ──                  │
+│  RemoSwift (Swift wrapper)           │
+│  Your app registers capabilities     │
+└──────────────────────────────────────┘
 ```
 
-The iOS SDK starts a TCP server inside your app and advertises it via Bonjour. The macOS CLI auto-discovers devices and sends JSON-RPC requests. Built-in capabilities (view tree, screenshot, device info) are available automatically. Your app can register additional *capabilities* that Remo can call remotely.
+The iOS SDK starts a TCP server inside your app. Real devices are discovered via USB (usbmuxd), simulators via Bonjour/mDNS. The macOS CLI (or any AI agent) sends JSON-RPC requests to invoke capabilities. Built-in capabilities (view tree, screenshot, device info) are available automatically. Your app registers additional *capabilities* that agents can call remotely.
 
 ## Quick Start
 
@@ -154,40 +150,22 @@ These are registered automatically by the SDK — no setup required:
 
 ## Web Dashboard
 
-The web dashboard provides a browser-based UI for controlling iOS devices:
-
-```bash
-remo dashboard                    # Opens browser at http://127.0.0.1:3030
-remo dashboard --port 8080        # Custom port
-remo dashboard --no-open          # Don't auto-open browser
-```
-
-Features:
-- **Multi-device discovery**: Auto-discovers devices via USB + Bonjour — no `--addr` needed
-- **Device selector**: Switch between real devices and simulators from a dropdown
-- **Live video streaming**: H.264 screen mirror via WebSocket + MSE/fMP4
-- **Screenshots**: Capture and view full-screen with overlay preview
-- **Capabilities panel**: Browse and invoke registered capabilities
-- **Terminal**: Interactive command input with log output
+A browser-based demo page for interacting with iOS devices — useful for demos, manual testing, and reviewing animations. Run `remo dashboard` to open it at `http://127.0.0.1:3030`.
 
 ## Project Status
 
 **v0.3.0-dev** — Video streaming, web dashboard, multi-device support. See [SPEC.md](SPEC.md) for the full architecture.
 
 ### What works now
+- **Agentic workflow**: Discover → connect → invoke capability → screenshot/video verify → iterate
+- Real device support via USB (usbmuxd) + simulator support via Bonjour (mDNS)
 - Full RPC round-trip: CLI → TCP → iOS SDK → capability handler → response
 - Built-in introspection: view tree, screenshot, device info, app info
-- Bonjour/mDNS auto-discovery for simulators and Wi-Fi devices
+- Screen capture: screenshots + H.264 video recording for animation review
 - Multi-simulator support (auto-assigned ports)
-- USB device discovery + tunnel via usbmuxd
 - Debug-only SDK (`#if DEBUG` — no-ops in Release builds)
-- GCD main-thread dispatch for safe UIKit access from Rust
-- Graceful server shutdown via `remo_stop()`
-- Enhanced example app (counter, items, activity log, toast, confetti, accent color)
-- CI pipeline (check, lint, test, iOS build + Swift integration)
-- Automated release pipeline (XCFramework → GitHub Release → SPM distribution)
-- **Live screen mirroring** (H.264 via VideoToolbox → fMP4 → MSE in browser)
-- **Web dashboard** with multi-device selector, video player, screenshot viewer, capability browser
+- Web dashboard for demos and manual interaction
+- CI pipeline + automated release pipeline (XCFramework → GitHub Release → SPM)
 
 ### Roadmap
 - [ ] Auto-reconnection on disconnect
