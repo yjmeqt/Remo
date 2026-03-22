@@ -275,7 +275,8 @@ async fn dispatch_request_with_streaming(
             let fps = params
                 .get("fps")
                 .and_then(serde_json::Value::as_u64)
-                .unwrap_or(30) as u32;
+                .unwrap_or(30)
+                .clamp(1, 120) as u32;
 
             let stream_id = 1u32;
             let session = Arc::new(crate::streaming::MirrorSession::new(stream_id));

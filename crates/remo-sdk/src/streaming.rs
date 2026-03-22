@@ -141,6 +141,7 @@ pub async fn run_mirror_loop(session: Arc<MirrorSession>, sender: StreamSender, 
 
                     if let Err(e) = sender_clone.send_frame(frame).await {
                         warn!("failed to send stream frame: {e}");
+                        session_clone.stop();
                         break;
                     }
                 }
@@ -148,6 +149,7 @@ pub async fn run_mirror_loop(session: Arc<MirrorSession>, sender: StreamSender, 
                     tokio::time::sleep(std::time::Duration::from_millis(1)).await;
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    session_clone.stop();
                     debug!("encoder channel disconnected");
                     break;
                 }
@@ -185,6 +187,7 @@ pub async fn run_mirror_loop(session: Arc<MirrorSession>, sender: StreamSender, 
     encoder.flush().ok();
     encoder.stop();
     send_task.abort();
+    let _ = send_task.await; // Wait for task to release mutex
 
     let end_frame = StreamFrame {
         stream_id: session.stream_id,
