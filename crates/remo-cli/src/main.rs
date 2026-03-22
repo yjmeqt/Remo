@@ -214,7 +214,15 @@ async fn connect(
 ) -> Result<RpcClient> {
     match device {
         Some(device_id) => {
-            let (dm, _rx) = DeviceManager::new();
+            let (dm, mut rx) = DeviceManager::new();
+            dm.start_usb_discovery()
+                .await
+                .map_err(|e| anyhow::anyhow!("USB discovery failed: {e}"))?;
+            // Wait briefly for device attachment events
+            let _ = tokio::time::timeout(Duration::from_secs(2), async {
+                while (rx.recv().await).is_some() {}
+            })
+            .await;
             let client = dm
                 .connect_to_device(device_id, event_tx)
                 .await

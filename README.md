@@ -101,10 +101,8 @@ cargo build -p remo-cli
 ```swift
 import RemoSwift
 
-// In your app's init — built-in capabilities are registered automatically:
-Remo.start(port: 0)  // port 0 = auto-assign (recommended for multi-simulator)
-
-// Register custom capabilities:
+// Just register capabilities — the server starts automatically.
+// (Simulator: random port to avoid collisions, Device: port 9930 for USB tunnel)
 Remo.register("myFeature.toggle") { params in
     let enabled = params["enabled"] as? Bool ?? false
     FeatureFlags.shared.myFeature = enabled

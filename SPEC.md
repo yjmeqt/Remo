@@ -96,7 +96,7 @@ The iOS app embeds a lightweight SDK that starts a TCP server and advertises its
 |---|---|
 | `remo.h` | Manually maintained C header for the FFI boundary |
 | `CRemo` module | SPM binary target wrapping `RemoSDK.xcframework` |
-| `RemoSwift` package | Thin Swift wrapper: `Remo.start()`, `Remo.register("name") { ... }`. Debug-only (`#if DEBUG`). |
+| `RemoSwift` package | Thin Swift wrapper with zero-config auto-start: `Remo.register("name") { ... }`. Debug-only (`#if DEBUG`). Server starts automatically on first API access (random port on simulator, 9930 on device). |
 | `RemoExample` app | Demo app: 4 tabs (Home, Items, Activity Log, Settings), 10+ capabilities. |
 
 ---
@@ -217,7 +217,7 @@ Payload is XML plist.
 
 The `remo-bonjour` crate wraps the Apple dns_sd C API for zero-config networking:
 
-- **iOS (server side)**: `remo_start()` automatically registers a Bonjour service of type `_remo._tcp` with the actual bound port. The service is de-advertised on `remo_stop()`.
+- **iOS (server side)**: The server auto-starts on first API access and registers a Bonjour service of type `_remo._tcp` with the actual bound port. The service is de-advertised on `remo_stop()`.
 - **macOS (client side)**: `remo devices` browses for `_remo._tcp` services, resolves hostnames to addresses, and lists discovered simulators/devices alongside USB devices.
 
 Port 0 (auto-assign) is recommended for multi-simulator setups — each simulator gets a unique port, and Bonjour advertises the correct one.
@@ -242,7 +242,7 @@ The Rust static library exposes 5 C functions:
 
 | Function | Signature | Description |
 |---|---|---|
-| `remo_start` | `(port: u16)` | Start tokio runtime + TCP server |
+| `remo_start` | `(port: u16)` | Start tokio runtime + TCP server. Idempotent — auto-called by Swift wrapper on first API access. |
 | `remo_stop` | `()` | Graceful shutdown |
 | `remo_register_capability` | `(name: *const c_char, context: *mut c_void, callback: fn)` | Register a Swift handler |
 | `remo_free_string` | `(ptr: *mut c_char)` | Free a Rust-allocated string |
@@ -252,7 +252,7 @@ The Rust static library exposes 5 C functions:
 
 ### 5.3 Threading model
 
-- `remo_start()` initializes a global `tokio::runtime::Runtime` (multi-thread) stored in a `OnceLock<Mutex<RemoGlobal>>`.
+- `remo_start()` is idempotent (guarded by `AtomicBool`). The Swift wrapper auto-calls it on first API access via a lazy `static let`. It initializes a global `tokio::runtime::Runtime` (multi-thread) stored in a `OnceLock<Mutex<RemoGlobal>>`.
 - The TCP server and all connection handlers run on tokio's thread pool.
 - Built-in capabilities that require UIKit access (view tree, screenshot, device info) use `remo_objc::run_on_main_sync()` to dispatch work to the main thread via GCD `dispatch_sync_f`.
 - FFI capability callbacks (user-registered) are invoked on a tokio worker thread. For UI mutations, the Swift handler must dispatch to `DispatchQueue.main`.
@@ -371,7 +371,7 @@ The release CI pipeline (`release.yml`) builds the XCFramework, zips it, and pus
 ### 8.4 Xcode integration
 
 1. Add the `remo-spm` SPM package dependency (or the local `RemoSwift` package for development).
-2. In `AppDelegate` or `@main App.init`: call `Remo.start()` and optionally register custom capabilities.
+2. Register custom capabilities via `Remo.register(...)`. The server auto-starts on first API access — no explicit `Remo.start()` needed.
 3. Built-in capabilities (view tree, screenshot, device/app info) are available immediately — no registration needed.
 
 ### 8.5 Tests
@@ -560,7 +560,7 @@ remo/
 │   │       └── RemoSwift/
 │   │           ├── include/
 │   │           │   └── remo.h              # C header for FFI (manually maintained)
-│   │           └── Remo.swift              # Swift wrapper: Remo.start(), Remo.register()
+│   │           └── Remo.swift              # Swift wrapper: auto-start + Remo.register()
 │   └── RemoSDK.xcframework/               # Built by build-ios.sh (gitignored)
 └── examples/ios/
     ├── RemoExample.xcworkspace/
