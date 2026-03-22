@@ -18,7 +18,7 @@ public final class AppStore: @unchecked Sendable {
     public var counter: Int = 0
     public var username: String = "Guest"
     public var items: [String] = ["Item A", "Item B", "Item C"]
-    public var currentRoute: String = "/"
+    public var currentRoute: String = "home"
 
     var accentColorName: String = "blue"
     var toastMessage: String?
@@ -78,7 +78,7 @@ public func setupRemo(store: AppStore) {
     // -- Existing capabilities ------------------------------------------------
 
     logged("navigate") { params in
-        let route = params["route"] as? String ?? "/"
+        let route = params["route"] as? String ?? "home"
         DispatchQueue.main.async { store.currentRoute = route }
         return ["status": "ok", "route": route]
     }
@@ -192,18 +192,23 @@ public struct ContentView: View {
     @Environment(AppStore.self) private var store
 
     public var body: some View {
+        @Bindable var store = store
         ZStack(alignment: .top) {
-            TabView {
+            TabView(selection: $store.currentRoute) {
                 HomeView()
+                    .tag("home")
                     .tabItem { Label("Home", systemImage: "house") }
 
                 ListPage()
+                    .tag("items")
                     .tabItem { Label("Items", systemImage: "list.bullet") }
 
                 ActivityLogView()
+                    .tag("activity")
                     .tabItem { Label("Activity", systemImage: "waveform") }
 
                 SettingsPage()
+                    .tag("settings")
                     .tabItem { Label("Settings", systemImage: "gear") }
             }
             .tint(store.accentColor)
@@ -260,7 +265,7 @@ struct HomeView: View {
 
                 Spacer()
 
-                if store.currentRoute != "/" {
+                if store.currentRoute != "home" {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.triangle.turn.up.right.diamond")
                         Text(store.currentRoute)
