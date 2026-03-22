@@ -1,3 +1,4 @@
+pub mod dashboard;
 pub mod device_manager;
 pub mod mp4_muxer;
 pub mod rpc_client;

@@ -12,6 +12,7 @@ remo-transport = { path = "../remo-transport" }
 remo-usbmuxd = { path = "../remo-usbmuxd" }
 remo-bonjour = { path = "../remo-bonjour" }
 tokio.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 thiserror.workspace = true

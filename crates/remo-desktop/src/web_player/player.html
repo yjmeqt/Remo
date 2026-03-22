@@ -59,6 +59,7 @@ let lastFpsTime = performance.now();
 let ws = null;
 let reconnectTimer = null;
 let codecString = "";
+let pendingFrames = [];
 
 // ---------------------------------------------------------------------------
 // Status overlay
@@ -584,6 +585,7 @@ function resetMSE() {
   appendQueue = [];
   appending = false;
   seqNum = 0;
+  pendingFrames = [];
 
   mediaSource = new MediaSource();
   videoEl.src = URL.createObjectURL(mediaSource);
@@ -640,10 +642,25 @@ function initSourceBuffer(initSegment) {
   }
 
   sourceBuffer = mediaSource.addSourceBuffer(codecString);
-  sourceBuffer.mode = "segments";
+  sourceBuffer.mode = "sequence";
   sourceBuffer.addEventListener("updateend", onUpdateEnd);
 
   appendSegment(initSegment);
+
+  // Drain any frames that arrived while sourceBuffer was being created
+  if (pendingFrames.length > 0) {
+    console.log(`Draining ${pendingFrames.length} buffered frames`);
+    for (const pf of pendingFrames) {
+      seqNum++;
+      frameCount++;
+      fpsFrameCount++;
+      const isKey = !!(pf.flags & KEYFRAME);
+      const segment = buildMediaSegment(pf.nalData, pf.timestamp_us, isKey, seqNum);
+      appendSegment(segment);
+    }
+    pendingFrames = [];
+  }
+  videoEl.play().catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -704,7 +721,13 @@ function connect() {
         else if (nalType === 8) pps = nal;
       }
       if (sps && pps) {
-        console.log("Got SPS/PPS, building init segment");
+        // Only reset MSE if codec changed or first time
+        const spsInfo = parseSPS(sps);
+        const newCodec = `video/mp4; codecs="${makeCodecString(spsInfo)}"`;
+        if (newCodec === codecString && sourceBuffer) {
+          return; // Same codec, already initialized
+        }
+        console.log("Initializing MSE, codec:", newCodec);
         resetMSE();
         const initSeg = buildInitSegment(sps, pps);
 
@@ -717,8 +740,11 @@ function connect() {
       return;
     }
 
-    // Regular frame or keyframe
-    if (!sourceBuffer) return;
+    // Regular frame or keyframe — buffer if sourceBuffer not ready yet
+    if (!sourceBuffer) {
+      pendingFrames.push({ flags, timestamp_us, nalData });
+      return;
+    }
 
     seqNum++;
     frameCount++;

@@ -1101,6 +1101,7 @@ dependencies = [
  "remo-protocol",
  "remo-transport",
  "remo-usbmuxd",
+ "serde",
  "serde_json",
  "thiserror",
  "tokio",

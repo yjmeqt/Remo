@@ -17,34 +17,10 @@ mod apple {
     use std::ffi::c_void;
     use std::ptr;
 
-    type CGFloat = f64;
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    struct CGSize {
-        width: CGFloat,
-        height: CGFloat,
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    struct CGRect {
-        origin: CGPoint,
-        size: CGSize,
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    struct CGPoint {
-        x: CGFloat,
-        y: CGFloat,
-    }
-
     type CVReturn = i32;
     type CVPixelBufferRef = *mut c_void;
     type CGContextRef = *mut c_void;
     type CGColorSpaceRef = *mut c_void;
-    type CGImageRef = *const c_void;
 
     #[link(name = "CoreVideo", kind = "framework")]
     extern "C" {
@@ -76,13 +52,13 @@ mod apple {
         fn CGColorSpaceCreateDeviceRGB() -> CGColorSpaceRef;
         fn CGContextRelease(context: CGContextRef);
         fn CGColorSpaceRelease(color_space: CGColorSpaceRef);
-        fn CGContextDrawImage(c: CGContextRef, rect: CGRect, image: CGImageRef);
+        fn CGContextTranslateCTM(c: CGContextRef, tx: f64, ty: f64);
+        fn CGContextScaleCTM(c: CGContextRef, sx: f64, sy: f64);
     }
 
     extern "C" {
-        fn UIGraphicsBeginImageContextWithOptions(size: CGSize, opaque: bool, scale: CGFloat);
-        fn UIGraphicsGetImageFromCurrentImageContext() -> *mut objc2::runtime::AnyObject;
-        fn UIGraphicsEndImageContext();
+        fn UIGraphicsPushContext(context: CGContextRef);
+        fn UIGraphicsPopContext();
     }
 
     extern "C" {
@@ -156,12 +132,13 @@ mod apple {
             return None;
         }
 
-        // Render view hierarchy into UIImage
-        let size = CGSize {
-            width: bounds.size.width,
-            height: bounds.size.height,
-        };
-        UIGraphicsBeginImageContextWithOptions(size, false, scale);
+        // Transform CG coordinates (origin bottom-left) → UIKit (origin top-left)
+        // and scale from points to pixels in one step.
+        CGContextTranslateCTM(context, 0.0, pixel_height as f64);
+        CGContextScaleCTM(context, scale, -scale);
+
+        // Render view hierarchy directly into the CVPixelBuffer's CGContext.
+        UIGraphicsPushContext(context);
 
         let after_updates: bool = false; // false for speed in continuous capture
         let _success: bool = msg_send![
@@ -170,23 +147,7 @@ mod apple {
             afterScreenUpdates: after_updates
         ];
 
-        let image: *mut objc2::runtime::AnyObject = UIGraphicsGetImageFromCurrentImageContext();
-
-        if !image.is_null() {
-            let cg_image: CGImageRef = msg_send![image, CGImage];
-            if !cg_image.is_null() {
-                let draw_rect = CGRect {
-                    origin: CGPoint { x: 0.0, y: 0.0 },
-                    size: CGSize {
-                        width: pixel_width as f64,
-                        height: pixel_height as f64,
-                    },
-                };
-                CGContextDrawImage(context, draw_rect, cg_image);
-            }
-        }
-
-        UIGraphicsEndImageContext();
+        UIGraphicsPopContext();
         CGContextRelease(context);
         CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
 

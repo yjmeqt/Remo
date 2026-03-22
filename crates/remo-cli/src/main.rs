@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -118,6 +119,17 @@ enum Command {
         device: Option<u32>,
     },
 
+    /// Launch the web dashboard (auto-discovers devices).
+    Dashboard {
+        /// Port for the dashboard web server.
+        #[arg(short, long, default_value = "8080")]
+        port: u16,
+
+        /// Don't open browser automatically.
+        #[arg(long)]
+        no_open: bool,
+    },
+
     /// Start screen mirroring from a device.
     Mirror {
         /// Device address (host:port).
@@ -235,6 +247,9 @@ async fn main() -> Result<()> {
         }
         Command::Info { addr, device } => {
             cmd_info(addr, device).await?;
+        }
+        Command::Dashboard { port, no_open } => {
+            cmd_dashboard(port, no_open).await?;
         }
         Command::Mirror {
             addr,
@@ -501,6 +516,49 @@ async fn cmd_info(addr: SocketAddr, device: Option<u32>) -> Result<()> {
         );
     }
 
+    Ok(())
+}
+
+async fn cmd_dashboard(port: u16, no_open: bool) -> Result<()> {
+    use remo_desktop::DeviceManager;
+
+    let (dm, dm_event_rx) = DeviceManager::new();
+
+    // Start discovery (failures are non-fatal — we just won't see those device types)
+    if let Err(e) = dm.start_usb_discovery().await {
+        eprintln!("USB discovery unavailable: {e}");
+    }
+    if let Err(e) = dm.start_bonjour_discovery() {
+        eprintln!("Bonjour discovery unavailable: {e}");
+    }
+
+    let state = Arc::new(remo_desktop::dashboard::DashboardState::new(
+        dm,
+        dm_event_rx,
+    ));
+
+    let bind = SocketAddr::from(([127, 0, 0, 1], port));
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let server_addr = remo_desktop::dashboard::start_server(state.clone(), bind, async {
+        shutdown_rx.await.ok();
+    })
+    .await?;
+
+    let url = format!("http://{server_addr}");
+    println!("Dashboard running at {url}");
+    println!("Discovering devices via USB + Bonjour...");
+
+    if !no_open {
+        let _ = open::that(&url);
+    }
+
+    // Wait for Ctrl+C
+    println!("Press Ctrl+C to stop...");
+    tokio::signal::ctrl_c().await?;
+    println!("\nShutting down...");
+
+    let _ = shutdown_tx.send(());
     Ok(())
 }
 
