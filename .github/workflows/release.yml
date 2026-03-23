@@ -88,17 +88,8 @@ jobs:
           cd /tmp/remo-spm
 
           # Sync Package.swift from source, replacing local path with remote URL + checksum
-          python3 - "$GITHUB_WORKSPACE/swift/RemoSwift/Package.swift" "$RELEASE_URL" "$CHECKSUM" <<'PYEOF'
-import re, sys
-src_path, url, checksum = sys.argv[1], sys.argv[2], sys.argv[3]
-src = open(src_path).read()
-src = re.sub(
-    r'\.binaryTarget\(\s*name:\s*"CRemo",\s*path:\s*"[^"]*"\s*\)',
-    f'.binaryTarget(name: "CRemo", url: "{url}", checksum: "{checksum}")',
-    src
-)
-open('Package.swift', 'w').write(src)
-PYEOF
+          cp "$GITHUB_WORKSPACE/swift/RemoSwift/Package.swift" Package.swift
+          python3 -c 'import re,sys; url=sys.argv[1]; cs=sys.argv[2]; p="Package.swift"; s=open(p).read(); s=re.sub(r"""\.binaryTarget\(\s*name:\s*"CRemo",\s*path:\s*"[^"]*"\s*\)""", f".binaryTarget(name: \"CRemo\", url: \"{url}\", checksum: \"{cs}\")", s); open(p,"w").write(s)' "$RELEASE_URL" "$CHECKSUM"
 
           # Update README.md version references
           sed -i '' "s|from: \"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\"|from: \"${VERSION}\"|g" \
