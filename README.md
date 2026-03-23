@@ -36,13 +36,29 @@ remo mirror -a <addr> --save recording.mp4              # or record video for an
 
 ### 1. Add the SDK to your iOS app
 
+**Swift (SPM)**
+
 Add the SPM dependency in Xcode:
 
 ```
 https://github.com/yi-jiang-applovin/remo-spm.git
 ```
 
+**Swift (CocoaPods)**
+
+```ruby
+pod 'Remo', :podspec => 'https://raw.githubusercontent.com/yi-jiang-applovin/remo-spm/main/Remo.podspec'
+```
+
+**Objective-C (CocoaPods)**
+
+```ruby
+pod 'Remo/ObjC', :podspec => 'https://raw.githubusercontent.com/yi-jiang-applovin/remo-spm/main/Remo.podspec'
+```
+
 ### 2. Register capabilities
+
+**Swift**
 
 ```swift
 import RemoSwift
@@ -54,6 +70,20 @@ Remo.register("myFeature.toggle") { params in
     FeatureFlags.shared.myFeature = enabled
     return ["toggled": enabled]
 }
+```
+
+**Objective-C**
+
+```objc
+#import <RemoObjC/RMRemo.h>
+
+// The server starts automatically on first API access.
+[RMRemo registerCapability:@"myFeature.toggle"
+                   handler:^NSDictionary *(NSDictionary *params) {
+    BOOL enabled = [params[@"enabled"] boolValue];
+    [FeatureFlags shared].myFeature = enabled;
+    return @{@"toggled": @(enabled)};
+}];
 ```
 
 ### 3. Install the CLI

@@ -26,10 +26,16 @@ jobs:
       - name: Build XCFramework
         run: ./build-ios.sh release
 
-      - name: Package XCFramework
+      - name: Package release zip
         run: |
+          cp LICENSE swift/
           cd swift
-          zip -r ../RemoSDK.xcframework.zip RemoSDK.xcframework
+          zip -r ../RemoSDK.xcframework.zip \
+            RemoSDK.xcframework \
+            RemoSwift/Sources/RemoSwift \
+            RemoSwift/Sources/RemoObjC \
+            Remo.podspec \
+            LICENSE
 
       - name: Compute checksum
         id: checksum
@@ -81,23 +87,29 @@ jobs:
           git clone "https://x-access-token:${SPM_TOKEN}@github.com/yi-jiang-applovin/remo-spm.git" /tmp/remo-spm
           cd /tmp/remo-spm
 
-          # Update Package.swift — URL
-          sed -i '' "s|url: \"https://github.com/yi-jiang-applovin/Remo/releases/download/[^\"]*\"|url: \"${RELEASE_URL}\"|" \
-              Package.swift
-
-          # Update Package.swift — checksum
-          sed -i '' "s|checksum: \"[^\"]*\"|checksum: \"${CHECKSUM}\"|" \
-              Package.swift
+          # Sync Package.swift from source, replacing local path with remote URL + checksum
+          cp "$GITHUB_WORKSPACE/swift/RemoSwift/Package.swift" Package.swift
+          python3 -c 'import re,sys; url=sys.argv[1]; cs=sys.argv[2]; p="Package.swift"; s=open(p).read(); s=re.sub(r"""\.binaryTarget\(\s*name:\s*"CRemo",\s*path:\s*"[^"]*"\s*\)""", f".binaryTarget(name: \"CRemo\", url: \"{url}\", checksum: \"{cs}\")", s); open(p,"w").write(s)' "$RELEASE_URL" "$CHECKSUM"
 
           # Update README.md version references
           sed -i '' "s|from: \"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\"|from: \"${VERSION}\"|g" \
               README.md
-          sed -i '' "s|pod 'RemoSwift', '~> [0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*'|pod 'RemoSwift', '~> ${VERSION}'|g" \
+          sed -i '' "s|pod 'Remo[^']*', '~> [0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*'|pod 'Remo', '~> ${VERSION}'|g" \
               README.md
 
-          # Sync Swift source
+          # Sync Swift + ObjC source
           cp "$GITHUB_WORKSPACE/swift/RemoSwift/Sources/RemoSwift/Remo.swift" \
              Sources/RemoSwift/Remo.swift
+
+          mkdir -p Sources/RemoObjC/include
+          cp "$GITHUB_WORKSPACE/swift/RemoSwift/Sources/RemoObjC/include/RMRemo.h" \
+             Sources/RemoObjC/include/RMRemo.h
+          cp "$GITHUB_WORKSPACE/swift/RemoSwift/Sources/RemoObjC/RMRemo.m" \
+             Sources/RemoObjC/RMRemo.m
+
+          # Sync podspec
+          cp "$GITHUB_WORKSPACE/swift/Remo.podspec" \
+             Remo.podspec
 
           # Commit and push
           git config user.name "github-actions[bot]"
