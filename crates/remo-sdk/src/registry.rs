@@ -141,4 +141,21 @@ mod tests {
         names.sort();
         assert_eq!(names, vec!["a", "b"]);
     }
+
+    #[tokio::test]
+    async fn unregister_removes_capability() {
+        let reg = CapabilityRegistry::new();
+        reg.register_sync("temp", |_| Ok(serde_json::json!({"ok": true})));
+        assert!(reg.has("temp"));
+
+        assert!(reg.unregister("temp"));
+        assert!(!reg.has("temp"));
+        assert!(reg.invoke("temp", Value::Null).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn unregister_missing_returns_false() {
+        let reg = CapabilityRegistry::new();
+        assert!(!reg.unregister("nonexistent"));
+    }
 }

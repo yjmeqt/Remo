@@ -72,6 +72,16 @@ public final class Remo {
         }
     }
 
+    /// Unregister a capability by name.
+    ///
+    /// Returns `true` if the capability existed and was removed.
+    @discardableResult
+    public static func unregister(_ name: String) -> Bool {
+        name.withCString { namePtr in
+            remo_unregister_capability(namePtr)
+        }
+    }
+
     /// List capabilities registered on this device.
     public static func listCapabilities() -> [String] {
         _ = _ensureStarted
@@ -135,6 +145,8 @@ public final class Remo {
     public static func start(port: UInt16 = defaultPort) {}
     public static func stop() {}
     public static func register(_ name: String, handler: @escaping ([String: Any]) -> [String: Any]) {}
+    @discardableResult
+    public static func unregister(_ name: String) -> Bool { false }
     public static func listCapabilities() -> [String] { [] }
 }
 

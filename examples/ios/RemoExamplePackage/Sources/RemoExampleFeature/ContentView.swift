@@ -57,6 +57,52 @@ public final class AppStore: @unchecked Sendable {
     }
 }
 
+// MARK: - Page-Level Capability Helpers
+
+/// Register page-level capabilities from a non-isolated context.
+/// Avoids Swift 6 MainActor isolation issues when Remo handlers
+/// are invoked from background threads.
+func registerHomeCapabilities(store: AppStore) {
+    Remo.register("counter.increment") { params in
+        let amount = params["amount"] as? Int ?? 1
+        DispatchQueue.main.async { store.counter += amount }
+        return ["status": "ok", "amount": amount]
+    }
+}
+
+func registerItemsCapabilities(store: AppStore) {
+    Remo.register("items.add") { params in
+        let name = params["name"] as? String ?? "New Item"
+        DispatchQueue.main.async {
+            withAnimation { store.items.append(name) }
+        }
+        return ["status": "ok", "name": name]
+    }
+    Remo.register("items.remove") { params in
+        let name = params["name"] as? String ?? ""
+        DispatchQueue.main.async {
+            withAnimation {
+                if let idx = store.items.firstIndex(of: name) {
+                    store.items.remove(at: idx)
+                }
+            }
+        }
+        return ["status": "ok", "name": name]
+    }
+    Remo.register("items.clear") { _ in
+        DispatchQueue.main.async {
+            withAnimation { store.items.removeAll() }
+        }
+        return ["status": "ok"]
+    }
+}
+
+func registerDetailCapabilities(item: String) {
+    Remo.register("detail.getInfo") { _ in
+        return ["item": item]
+    }
+}
+
 // MARK: - Remo Setup
 
 public func setupRemo(store: AppStore) {
@@ -111,12 +157,6 @@ public func setupRemo(store: AppStore) {
         return ["status": "ok"]
     }
 
-    logged("counter.increment") { params in
-        let amount = params["amount"] as? Int ?? 1
-        DispatchQueue.main.async { store.counter += amount }
-        return ["status": "ok", "amount": amount]
-    }
-
     // -- UI effect capabilities -----------------------------------------------
 
     logged("ui.toast") { params in
@@ -156,34 +196,6 @@ public func setupRemo(store: AppStore) {
         return ["status": "ok", "color": color]
     }
 
-    // -- List manipulation capabilities ---------------------------------------
-
-    logged("items.add") { params in
-        let name = params["name"] as? String ?? "New Item"
-        DispatchQueue.main.async {
-            withAnimation { store.items.append(name) }
-        }
-        return ["status": "ok", "name": name]
-    }
-
-    logged("items.remove") { params in
-        let name = params["name"] as? String ?? ""
-        DispatchQueue.main.async {
-            withAnimation {
-                if let idx = store.items.firstIndex(of: name) {
-                    store.items.remove(at: idx)
-                }
-            }
-        }
-        return ["status": "ok", "name": name]
-    }
-
-    logged("items.clear") { _ in
-        DispatchQueue.main.async {
-            withAnimation { store.items.removeAll() }
-        }
-        return ["status": "ok"]
-    }
 }
 
 // MARK: - Root View
@@ -279,6 +291,12 @@ struct HomeView: View {
             }
             .padding()
             .navigationTitle("Remo")
+            .task {
+                registerHomeCapabilities(store: store)
+            }
+            .onDisappear {
+                Remo.unregister("counter.increment")
+            }
         }
     }
 }
@@ -358,6 +376,14 @@ struct ListPage: View {
                     }
                 }
             }
+            .task {
+                registerItemsCapabilities(store: store)
+            }
+            .onDisappear {
+                Remo.unregister("items.add")
+                Remo.unregister("items.remove")
+                Remo.unregister("items.clear")
+            }
         }
     }
 }
@@ -376,6 +402,12 @@ struct DetailPage: View {
                 .foregroundStyle(.secondary)
         }
         .navigationTitle(item)
+        .task {
+            registerDetailCapabilities(item: item)
+        }
+        .onDisappear {
+            Remo.unregister("detail.getInfo")
+        }
     }
 }
 
