@@ -1066,7 +1066,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "remo-bonjour"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "thiserror",
  "tokio",
@@ -1075,7 +1075,7 @@ dependencies = [
 
 [[package]]
 name = "remo-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1092,7 +1092,7 @@ dependencies = [
 
 [[package]]
 name = "remo-desktop"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "dashmap",
@@ -1111,7 +1111,7 @@ dependencies = [
 
 [[package]]
 name = "remo-objc"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "objc2",
  "objc2-foundation",
@@ -1123,7 +1123,7 @@ dependencies = [
 
 [[package]]
 name = "remo-protocol"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bytes",
  "serde",
@@ -1135,7 +1135,7 @@ dependencies = [
 
 [[package]]
 name = "remo-sdk"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "dashmap",
  "futures",
@@ -1153,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "remo-transport"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "futures",
  "remo-protocol",
@@ -1165,7 +1165,7 @@ dependencies = [
 
 [[package]]
 name = "remo-usbmuxd"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bytes",
  "plist",
@@ -1177,7 +1177,7 @@ dependencies = [
 
 [[package]]
 name = "remo-workspace"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "remo-desktop",
  "remo-protocol",
