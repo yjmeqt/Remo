@@ -9,7 +9,7 @@ let useLocal = ProcessInfo.processInfo.environment["REMO_LOCAL"] != nil
 
 let remoDependency: Package.Dependency = useLocal
     ? .package(path: "../../../swift/RemoSwift")
-    : .package(url: "https://github.com/yi-jiang-applovin/remo-spm.git", from: "0.3.0")
+    : .package(url: "https://github.com/yi-jiang-applovin/remo-spm.git", from: "0.4.0")
 
 let remoProduct: Target.Dependency = .product(
     name: "RemoSwift",
