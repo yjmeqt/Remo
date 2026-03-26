@@ -1540,12 +1540,16 @@ dependencies = [
 name = "remo-workspace"
 version = "0.4.0"
 dependencies = [
+ "axum",
+ "http",
+ "remo-daemon",
  "remo-desktop",
  "remo-protocol",
  "remo-sdk",
  "remo-transport",
  "serde_json",
  "tokio",
+ "tower",
 ]
 
 [[package]]
