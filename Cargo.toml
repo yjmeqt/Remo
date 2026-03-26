@@ -10,6 +10,7 @@ members = [
     "crates/remo-desktop",
     "crates/remo-cli",
     "crates/remo-bonjour",
+    "crates/remo-daemon",
 ]
 
 [workspace.lints.clippy]
