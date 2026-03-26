@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use remo_protocol::{ErrorCode, Message, Request, Response};
+use remo_protocol::{ErrorCode, Event, Message, Request, Response};
 use remo_transport::{Connection, Listener};
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tracing::{error, info, warn};
@@ -46,6 +46,11 @@ impl RemoServer {
         let actual_port = listener.local_addr().port();
         info!(port = actual_port, "remo server started");
 
+        // Create the event broadcast channel and wire it into the registry
+        // so register/unregister emit capabilities_changed events.
+        let (event_tx, _) = broadcast::channel::<Event>(64);
+        self.registry.set_event_sender(event_tx.clone());
+
         if let Some(tx) = port_tx {
             let _ = tx.send(actual_port);
         }
@@ -59,9 +64,10 @@ impl RemoServer {
                         Ok(conn) => {
                             let registry = self.registry.clone();
                             let mut shutdown_rx = self.shutdown_tx.subscribe();
+                            let event_rx = event_tx.subscribe();
                             tokio::spawn(async move {
                                 tokio::select! {
-                                    _ = handle_connection(conn, registry) => {}
+                                    _ = handle_connection(conn, registry, event_rx) => {}
                                     _ = shutdown_rx.recv() => {
                                         info!("connection handler shutting down");
                                     }
@@ -201,13 +207,37 @@ fn count_descendants(node: &remo_objc::ViewNode) -> usize {
 // Connection handling
 // ---------------------------------------------------------------------------
 
-async fn handle_connection(conn: Connection, registry: CapabilityRegistry) {
+async fn handle_connection(
+    conn: Connection,
+    registry: CapabilityRegistry,
+    mut event_rx: broadcast::Receiver<Event>,
+) {
     let peer = conn.peer_addr();
     info!(%peer, "handling connection");
 
     let (mut read_half, write_half) = conn.split();
     let write_half = Arc::new(Mutex::new(write_half));
     let sender = crate::streaming::StreamSender::new(Arc::clone(&write_half));
+
+    // Spawn a task to forward capability change events to this client.
+    let event_sender = sender.clone();
+    let event_peer = peer;
+    let event_task = tokio::spawn(async move {
+        loop {
+            match event_rx.recv().await {
+                Ok(event) => {
+                    if let Err(e) = event_sender.send_message(Message::Event(event)).await {
+                        warn!(%event_peer, "event write error: {e}");
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    warn!(%event_peer, skipped = n, "event receiver lagged");
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
 
     // Active mirror session (only one at a time per connection)
     let mirror_session: Arc<Mutex<Option<Arc<crate::streaming::MirrorSession>>>> =
@@ -241,6 +271,9 @@ async fn handle_connection(conn: Connection, registry: CapabilityRegistry) {
             }
         }
     }
+
+    // Clean up the event forwarding task
+    event_task.abort();
 
     // Stop any active mirror session on disconnect
     let session = mirror_session.lock().await.take();
