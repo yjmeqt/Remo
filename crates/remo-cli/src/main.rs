@@ -606,6 +606,11 @@ async fn cmd_info(addr: SocketAddr, device: Option<u32>) -> Result<()> {
 async fn cmd_dashboard(port: u16, no_open: bool) -> Result<()> {
     use remo_desktop::DeviceManager;
 
+    // ------------------------------------------------------------------
+    // Ensure a daemon is running alongside the dashboard.
+    // ------------------------------------------------------------------
+    let auto_started_daemon = ensure_daemon_running().await?;
+
     let (dm, dm_event_rx) = DeviceManager::new();
 
     // Start discovery (failures are non-fatal — we just won't see those device types)
@@ -643,7 +648,72 @@ async fn cmd_dashboard(port: u16, no_open: bool) -> Result<()> {
     println!("\nShutting down...");
 
     let _ = shutdown_tx.send(());
+
+    // If we auto-started the daemon, stop it on exit.
+    if auto_started_daemon {
+        stop_auto_started_daemon();
+    }
+
     Ok(())
+}
+
+/// Ensure a daemon is running. Returns `true` if we spawned one ourselves.
+async fn ensure_daemon_running() -> Result<bool> {
+    // Check if a daemon is already running.
+    if let Some(info) = remo_daemon::read_daemon_info() {
+        if remo_daemon::is_daemon_alive(&info) {
+            println!(
+                "Daemon detected at port {}, dashboard will use daemon API",
+                info.port
+            );
+            return Ok(false);
+        }
+    }
+
+    // No daemon running — auto-start one in the background.
+    println!("No daemon detected, auto-starting daemon...");
+    let daemon_port: u16 = 19630;
+    let exe = std::env::current_exe()?;
+    let _child = std::process::Command::new(exe)
+        .args(["start", "--port", &daemon_port.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+
+    // Poll for daemon readiness (up to ~3 seconds).
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    let mut ready = false;
+    while tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        if let Some(info) = remo_daemon::read_daemon_info() {
+            if remo_daemon::is_daemon_alive(&info) {
+                println!("Daemon started on port {}", info.port);
+                ready = true;
+                break;
+            }
+        }
+    }
+
+    if !ready {
+        eprintln!("Warning: daemon did not become ready within 3 seconds, continuing anyway");
+    }
+
+    Ok(true)
+}
+
+/// Send SIGTERM to the auto-started daemon so it shuts down with the dashboard.
+fn stop_auto_started_daemon() {
+    if let Some(info) = remo_daemon::read_daemon_info() {
+        if remo_daemon::is_daemon_alive(&info) {
+            println!("Stopping auto-started daemon (pid={})...", info.pid);
+            // SAFETY: sending SIGTERM to a known-alive process we own.
+            #[allow(unsafe_code)]
+            unsafe {
+                libc::kill(info.pid as i32, libc::SIGTERM);
+            }
+        }
+    }
 }
 
 async fn cmd_mirror(
