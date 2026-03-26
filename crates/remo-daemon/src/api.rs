@@ -163,7 +163,7 @@ async fn disconnect_device(
         )
     })?;
 
-    state.pool.remove(&device_id);
+    state.pool.disconnect(&device_id);
 
     let device_str = device_id_to_string(&device_id);
     state.event_bus.emit(
@@ -201,7 +201,7 @@ async fn call_capability(
     Json(body): Json<CallRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     let device_id = resolve_device(&state.pool, body.device.as_deref())?;
-    let timeout = Duration::from_millis(body.timeout_ms.unwrap_or(10_000));
+    let timeout = Duration::from_millis(body.timeout_ms.unwrap_or(30_000));
 
     match body.mode {
         CallMode::Await => {
@@ -409,14 +409,29 @@ fn default_limit() -> usize {
 async fn poll_events(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<EventsQuery>,
-) -> Json<Value> {
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // Check for expired cursor
+    if q.since > 0 {
+        if let Some(earliest) = state.event_bus.earliest_cursor() {
+            if q.since < earliest {
+                return Err((
+                    StatusCode::GONE,
+                    Json(json!({
+                        "error": "cursor_expired",
+                        "earliest_cursor": earliest,
+                    })),
+                ));
+            }
+        }
+    }
+
     let events = state.event_bus.poll(q.since, q.limit);
     let next_cursor = events.last().map(|e| e.seq).unwrap_or(q.since);
 
-    Json(json!({
+    Ok(Json(json!({
         "events": events,
         "next_cursor": next_cursor,
-    }))
+    })))
 }
 
 // -- /webhooks --------------------------------------------------------------

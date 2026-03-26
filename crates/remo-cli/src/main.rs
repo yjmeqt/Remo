@@ -703,6 +703,7 @@ async fn ensure_daemon_running() -> Result<bool> {
 }
 
 /// Send SIGTERM to the auto-started daemon so it shuts down with the dashboard.
+#[cfg(unix)]
 fn stop_auto_started_daemon() {
     if let Some(info) = remo_daemon::read_daemon_info() {
         if remo_daemon::is_daemon_alive(&info) {
@@ -714,6 +715,11 @@ fn stop_auto_started_daemon() {
             }
         }
     }
+}
+
+#[cfg(not(unix))]
+fn stop_auto_started_daemon() {
+    // No-op on non-unix platforms.
 }
 
 async fn cmd_mirror(
@@ -841,6 +847,7 @@ async fn cmd_start(port: u16, daemon: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
 fn cmd_stop() -> Result<()> {
     let Some(info) = remo_daemon::read_daemon_info() else {
         anyhow::bail!("no daemon running (daemon.json not found)");
@@ -862,6 +869,11 @@ fn cmd_stop() -> Result<()> {
 
     println!("Sent SIGTERM to daemon (pid={})", info.pid);
     Ok(())
+}
+
+#[cfg(not(unix))]
+fn cmd_stop() -> Result<()> {
+    anyhow::bail!("daemon stop is not supported on this platform");
 }
 
 async fn cmd_status() -> Result<()> {

@@ -24,4 +24,5 @@ anyhow.workspace = true
 base64.workspace = true
 open.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"

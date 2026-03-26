@@ -266,6 +266,7 @@ pub fn read_daemon_info() -> Option<DaemonInfo> {
 }
 
 /// Check whether a daemon with the given PID is still alive.
+#[cfg(unix)]
 pub fn is_daemon_alive(info: &DaemonInfo) -> bool {
     // SAFETY: `kill(pid, 0)` with signal 0 only checks whether the process
     // exists and is reachable — it does not actually send any signal.
@@ -273,6 +274,12 @@ pub fn is_daemon_alive(info: &DaemonInfo) -> bool {
     unsafe {
         libc::kill(info.pid as i32, 0) == 0
     }
+}
+
+/// Non-unix fallback — cannot check process liveness.
+#[cfg(not(unix))]
+pub fn is_daemon_alive(_info: &DaemonInfo) -> bool {
+    false
 }
 
 /// Public wrapper for removing daemon.json (used by CLI stop command).

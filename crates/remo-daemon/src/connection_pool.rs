@@ -64,6 +64,15 @@ impl ConnectionPool {
         self.entries.remove(id);
     }
 
+    /// Disconnect a device: set state to `Disconnected` and drop the client,
+    /// but keep the entry in the pool so the device remains visible.
+    pub fn disconnect(&self, id: &DeviceId) {
+        if let Some(mut entry) = self.entries.get_mut(id) {
+            entry.state = DeviceState::Disconnected;
+            entry.client = None;
+        }
+    }
+
     /// Attach an RPC client to a device and mark it as Connected.
     pub fn set_client(&self, id: &DeviceId, client: RpcClient) {
         if let Some(mut entry) = self.entries.get_mut(id) {
