@@ -145,9 +145,15 @@ impl CapabilityRegistry {
     }
 
     /// Emit a `capabilities_changed` event if an event sender is configured.
+    ///
+    /// We clone the sender out from under the lock before calling `self.list()`
+    /// to avoid holding the mutex while iterating the DashMap.
     fn emit_capabilities_changed(&self, action: &str, name: &str) {
-        let guard = self.event_tx.lock().unwrap();
-        if let Some(tx) = guard.as_ref() {
+        let tx = {
+            let guard = self.event_tx.lock().unwrap();
+            guard.clone()
+        };
+        if let Some(tx) = tx {
             let capabilities = self.list();
             let event = Event::new(
                 "capabilities_changed",
@@ -157,7 +163,6 @@ impl CapabilityRegistry {
                     "capabilities": capabilities,
                 }),
             );
-            // Ignore send errors — no receivers is fine (no clients connected).
             let _ = tx.send(event);
         }
     }

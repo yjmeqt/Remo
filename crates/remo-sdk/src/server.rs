@@ -48,7 +48,9 @@ impl RemoServer {
 
         // Create the event broadcast channel and wire it into the registry
         // so register/unregister emit capabilities_changed events.
-        let (event_tx, _) = broadcast::channel::<Event>(64);
+        /// Max queued events per subscriber before lagging.
+        const EVENT_CHANNEL_CAPACITY: usize = 64;
+        let (event_tx, _) = broadcast::channel::<Event>(EVENT_CHANNEL_CAPACITY);
         self.registry.set_event_sender(event_tx.clone());
 
         if let Some(tx) = port_tx {
