@@ -25,13 +25,11 @@ Device-dependent tests are `#[ignore]`d by default. Run with `cargo test -- --ig
 
 To run a single Rust test: `cargo test -p <crate-name> <test_name>`
 
-Swift integration tests (requires XCFramework built first):
+E2E test (builds SDK + CLI + app, launches on simulator, exercises all capabilities):
 ```bash
-REMO_LOCAL=1 xcodebuild test \
-  -workspace examples/ios/RemoExample.xcworkspace \
-  -scheme RemoExample \
-  -destination 'platform=iOS Simulator,name=iPhone 17' \
-  -skipPackagePluginValidation
+./scripts/e2e-test.sh                     # full run
+SKIP_BUILD=1 ./scripts/e2e-test.sh        # skip build phase
+./scripts/e2e-test.sh --screenshots       # save screenshots to /tmp/remo-e2e/
 ```
 
 ## Architecture
@@ -81,4 +79,4 @@ Workspace + SPM package architecture: the Xcode project (`RemoExample/`) is a th
 
 ## CI
 
-GitHub Actions on `macos-26`. Four jobs: check (clippy + fmt), test, swift-test (xcodebuild on simulator), build-ios (device + x86_64 sim). Release workflow builds XCFramework, creates GitHub release, and auto-updates `remo-spm` repo.
+GitHub Actions on `macos-26`. Two jobs: check (fmt + clippy + unit tests), e2e (build SDK/CLI/app, launch on simulator, exercise all capabilities via `scripts/e2e-test.sh`). Release workflow builds XCFramework, creates GitHub release, and auto-updates `remo-spm` repo.

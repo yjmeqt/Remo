@@ -23,14 +23,17 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cargo
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo test --workspace
 
-  swift-test:
-    name: Swift Integration Test (arm64 sim)
+  e2e:
+    name: E2E (Simulator)
     needs: check
     runs-on: macos-26
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -38,52 +41,25 @@ jobs:
           targets: aarch64-apple-ios-sim
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ios-sim
+          shared-key: cargo
       - name: Cache Xcode DerivedData & SPM packages
         uses: actions/cache@v4
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData
             ~/Library/Caches/org.swift.swiftpm
-          key: xcode-${{ hashFiles('examples/ios/RemoExamplePackage/Package.swift') }}-${{ github.sha }}
+          key: xcode-e2e-${{ hashFiles('examples/ios/RemoExamplePackage/Package.swift') }}-${{ github.sha }}
           restore-keys: |
-            xcode-${{ hashFiles('examples/ios/RemoExamplePackage/Package.swift') }}-
-            xcode-
-      - name: Install xcbeautify
-        run: brew install xcbeautify
-      - name: Boot simulator & build XCFramework
-        run: |
-          xcrun simctl boot 'iPhone 17' 2>/dev/null || true
-          ./build-ios.sh sim
-      - name: Run Swift tests
-        env:
-          REMO_LOCAL: "1"
-        run: |
-          run_tests() {
-            xcodebuild test \
-              -workspace examples/ios/RemoExample.xcworkspace \
-              -scheme RemoExample \
-              -destination 'platform=iOS Simulator,name=iPhone 17' \
-              -skipPackagePluginValidation 2>&1 | xcbeautify --is-ci
-          }
-          if ! run_tests; then
-            echo "==> Build/test failed, clearing caches and retrying..."
-            rm -rf ~/Library/Developer/Xcode/DerivedData
-            rm -rf ~/Library/Caches/org.swift.swiftpm
-            run_tests
-          fi
-
-  build-ios:
-    name: Build iOS (device + x86_64 sim)
-    needs: check
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+            xcode-e2e-${{ hashFiles('examples/ios/RemoExamplePackage/Package.swift') }}-
+            xcode-e2e-
+      - name: Boot simulator
+        run: xcrun simctl boot 'iPhone 17' 2>/dev/null || true
+      - name: Run E2E tests
+        run: ./scripts/e2e-test.sh --screenshots --record
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          targets: aarch64-apple-ios, x86_64-apple-ios
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ios-cross
-      - run: cargo build -p remo-sdk --features ios --target aarch64-apple-ios --release
-      - run: cargo build -p remo-sdk --features ios --target x86_64-apple-ios --release
+          name: e2e-artifacts
+          path: /tmp/remo-e2e/
+          retention-days: 14
