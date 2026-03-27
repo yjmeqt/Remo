@@ -92,6 +92,30 @@ Remo.unregister("myFeature.toggle")
 [RMRemo unregisterCapability:@"myFeature.toggle"];
 ```
 
+Capabilities can be unregistered dynamically — useful for page-level or conditional capabilities:
+
+**Swift**
+
+```swift
+// Register when entering a screen
+Remo.register("detail.getInfo") { _ in ["item": itemName] }
+
+// Unregister when leaving
+Remo.unregister("detail.getInfo")
+```
+
+**Objective-C**
+
+```objc
+// Register
+[RMRemo registerCapability:@"detail.getInfo" handler:^NSDictionary *(NSDictionary *params) {
+    return @{@"item": self.itemName};
+}];
+
+// Unregister
+[RMRemo unregisterCapability:@"detail.getInfo"];
+```
+
 ### 3. Install the CLI
 
 ```bash

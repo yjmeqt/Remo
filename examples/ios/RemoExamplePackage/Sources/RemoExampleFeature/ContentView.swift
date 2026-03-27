@@ -57,6 +57,52 @@ public final class AppStore: @unchecked Sendable {
     }
 }
 
+// MARK: - Page-Level Capability Helpers
+
+/// Register page-level capabilities from a non-isolated context.
+/// Avoids Swift 6 MainActor isolation issues when Remo handlers
+/// are invoked from background threads.
+func registerHomeCapabilities(store: AppStore) {
+    Remo.register("counter.increment") { params in
+        let amount = params["amount"] as? Int ?? 1
+        DispatchQueue.main.async { store.counter += amount }
+        return ["status": "ok", "amount": amount]
+    }
+}
+
+func registerItemsCapabilities(store: AppStore) {
+    Remo.register("items.add") { params in
+        let name = params["name"] as? String ?? "New Item"
+        DispatchQueue.main.async {
+            withAnimation { store.items.append(name) }
+        }
+        return ["status": "ok", "name": name]
+    }
+    Remo.register("items.remove") { params in
+        let name = params["name"] as? String ?? ""
+        DispatchQueue.main.async {
+            withAnimation {
+                if let idx = store.items.firstIndex(of: name) {
+                    store.items.remove(at: idx)
+                }
+            }
+        }
+        return ["status": "ok", "name": name]
+    }
+    Remo.register("items.clear") { _ in
+        DispatchQueue.main.async {
+            withAnimation { store.items.removeAll() }
+        }
+        return ["status": "ok"]
+    }
+}
+
+func registerDetailCapabilities(item: String) {
+    Remo.register("detail.getInfo") { _ in
+        return ["item": item]
+    }
+}
+
 // MARK: - Remo Setup
 
 /// Helper that wraps a capability handler with activity logging.
@@ -239,6 +285,12 @@ struct HomeView: View {
             }
             .padding()
             .navigationTitle("Remo")
+            .task {
+                registerHomeCapabilities(store: store)
+            }
+            .onDisappear {
+                Remo.unregister("counter.increment")
+            }
         }
         .onAppear {
             logged(store: store, "counter.increment") { params in
@@ -328,6 +380,14 @@ struct ListPage: View {
                     }
                 }
             }
+            .task {
+                registerItemsCapabilities(store: store)
+            }
+            .onDisappear {
+                Remo.unregister("items.add")
+                Remo.unregister("items.remove")
+                Remo.unregister("items.clear")
+            }
         }
         .onAppear {
             logged(store: store, "items.add") { params in
@@ -381,6 +441,12 @@ struct DetailPage: View {
                 .foregroundStyle(.secondary)
         }
         .navigationTitle(item)
+        .task {
+            registerDetailCapabilities(item: item)
+        }
+        .onDisappear {
+            Remo.unregister("detail.getInfo")
+        }
     }
 }
 

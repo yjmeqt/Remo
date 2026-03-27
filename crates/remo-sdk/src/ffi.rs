@@ -208,7 +208,7 @@ pub unsafe extern "C" fn remo_register_capability(
 /// `name` must be a valid null-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn remo_unregister_capability(name: *const c_char) -> bool {
-    let name = CStr::from_ptr(name).to_string_lossy().into_owned();
+    let name = CStr::from_ptr(name).to_string_lossy();
     let g = global();
     let lock = g.lock().unwrap();
     lock.registry.unregister(&name)
