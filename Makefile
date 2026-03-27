@@ -1,4 +1,4 @@
-.PHONY: setup build check test cli ios ios-sim ios-device clean fmt lint
+.PHONY: setup build check test cli ios ios-sim ios-device clean fmt lint e2e
 
 # First-time setup (run once after clone or worktree creation)
 setup:
@@ -34,6 +34,10 @@ ios-sim:
 
 ios-device:
 	./build-ios.sh device
+
+# E2E test — build everything, launch on simulator, exercise all capabilities
+e2e:
+	./scripts/e2e-test.sh
 
 # Format
 fmt:

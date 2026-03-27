@@ -516,7 +516,7 @@ The integration test spins up a `RemoServer` on localhost, connects an `RpcClien
 - `__list_capabilities` built-in
 - Unknown capability returns `not_found`
 
-CI also runs `xcodebuild test` for the Swift package to verify the XCFramework + Swift wrapper compile and link correctly.
+CI also runs `scripts/e2e-test.sh` which builds the SDK, CLI, and example app, launches on a simulator, and exercises every capability end-to-end via the Remo wire protocol.
 
 ---
 
@@ -551,7 +551,7 @@ CI also runs `xcodebuild test` for the Swift package to verify the XCFramework +
 | T-006 | No Bonjour/mDNS discovery | **Fixed.** `remo-bonjour` crate: iOS advertises, macOS browses. |
 | T-003 | No reconnection logic | **Fixed.** `remo-daemon` ConnectionPool auto-reconnects with exponential backoff. |
 | T-008 | `staticlib` not in Cargo.toml | **Fixed.** Feature-gated `crate-type = ["staticlib"]` in `remo-sdk`. |
-| T-012 | No CI pipeline | **Fixed.** GitHub Actions: check, fmt, clippy, test, iOS build, Swift integration. |
+| T-012 | No CI pipeline | **Fixed.** GitHub Actions: check (fmt, clippy, test), E2E (simulator). |
 
 ### 9.3 Open TODOs
 
@@ -630,8 +630,10 @@ remo/
 │   └── pre-commit                          # cargo fmt + clippy pre-commit hook
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                          # PR checks: fmt, clippy, test, iOS build, Swift integration
+│       ├── ci.yml                          # PR checks: fmt, clippy, test, E2E on simulator
 │       └── release.yml                     # Tag-triggered: build XCFramework, push to remo-spm
+├── scripts/
+│   └── e2e-test.sh                         # E2E test: build, deploy, exercise capabilities on simulator
 ├── tests/
 │   ├── integration.rs                      # Full round-trip server + client test
 │   └── daemon_integration.rs               # Daemon HTTP API integration tests
@@ -748,7 +750,7 @@ remo/
 - CLI: tree, screenshot, info commands
 
 ### ~~M5: CI/CD + SPM distribution~~ Done (v0.2.0)
-- GitHub Actions CI (check, fmt, clippy, test, iOS build, Swift integration)
+- GitHub Actions CI (check, fmt, clippy, test, E2E on simulator)
 - Automated release pipeline → `remo-spm` binary SPM package
 
 ### ~~M6: Video streaming + Web dashboard~~ Done (v0.3.0-dev)

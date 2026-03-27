@@ -1,0 +1,393 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# =============================================================================
+# Remo E2E Test
+#
+# Builds the SDK, CLI, and example app, then exercises every capability on a
+# simulator and verifies the JSON responses.
+#
+# Usage:
+#   ./scripts/e2e-test.sh                     # full run
+#   SKIP_BUILD=1 ./scripts/e2e-test.sh        # skip build phase
+#   ./scripts/e2e-test.sh --record            # save mirror recording
+#   ./scripts/e2e-test.sh --screenshots       # save screenshots
+#
+# Environment variables:
+#   DEVICE_UUID    — simulator UDID (default: first booted device)
+#   SKIP_BUILD     — set to 1 to skip build phase
+#   ARTIFACTS_DIR  — where to save screenshots/recordings (default: /tmp/remo-e2e)
+#   REMO_BIN       — path to remo binary (default: built from source)
+# =============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Options
+OPT_RECORD=false
+OPT_SCREENSHOTS=false
+for arg in "$@"; do
+    case "$arg" in
+        --record)      OPT_RECORD=true ;;
+        --screenshots) OPT_SCREENSHOTS=true ;;
+        --help|-h)
+            sed -n '3,/^# ====/p' "$0" | head -n -1 | sed 's/^# \?//'
+            exit 0
+            ;;
+    esac
+done
+
+ARTIFACTS_DIR="${ARTIFACTS_DIR:-/tmp/remo-e2e}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+# Counters
+PASS_COUNT=0
+FAIL_COUNT=0
+
+# Cleanup tracking
+MIRROR_PID=""
+APP_LAUNCHED=false
+
+cleanup() {
+    echo ""
+    echo -e "${CYAN}--- Cleanup ---${RESET}"
+    if [ -n "$MIRROR_PID" ] && kill -0 "$MIRROR_PID" 2>/dev/null; then
+        echo "Stopping mirror recording (pid=$MIRROR_PID)..."
+        kill "$MIRROR_PID" 2>/dev/null || true
+        wait "$MIRROR_PID" 2>/dev/null || true
+    fi
+    if [ "$APP_LAUNCHED" = true ] && [ -n "${DEVICE_UUID:-}" ]; then
+        echo "Terminating app..."
+        xcrun simctl terminate "$DEVICE_UUID" com.remo.example 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+log()  { echo -e "${CYAN}==>${RESET} ${BOLD}$*${RESET}"; }
+pass() {
+    PASS_COUNT=$((PASS_COUNT + 1))
+    echo -e "  ${GREEN}PASS${RESET} $*"
+}
+
+fail() {
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    echo -e "  ${RED}FAIL${RESET} $*"
+}
+
+remo() {
+    "$REMO_BIN" "$@" 2>/dev/null
+}
+
+# Call a capability and return the JSON response.
+# Strips the "Calling '...' on ..." header line and any ANSI codes.
+remo_call() {
+    local capability="$1"
+    local params="${2:-\{\}}"
+    "$REMO_BIN" call -a "$ADDR" "$capability" "$params" 2>/dev/null \
+        | sed 's/\x1b\[[0-9;]*m//g' \
+        | sed -n '/^{/,/^}/p'
+}
+
+# Assert that a jq expression against the remo call result evaluates to true.
+# Usage: assert_call "test name" "capability" '{"param":1}' '.data.status == "ok"'
+assert_call() {
+    local name="$1"
+    local capability="$2"
+    local params="$3"
+    local jq_expr="$4"
+
+    local result
+    if ! result=$(remo_call "$capability" "$params" 2>&1); then
+        fail "$name — call failed: $result"
+        return
+    fi
+
+    if echo "$result" | jq -e "$jq_expr" >/dev/null 2>&1; then
+        pass "$name"
+    else
+        fail "$name — expected $jq_expr, got: $(echo "$result" | jq -c '.data // .error // .')"
+    fi
+}
+
+# Take a screenshot if --screenshots is enabled.
+maybe_screenshot() {
+    local name="$1"
+    if [ "$OPT_SCREENSHOTS" = true ]; then
+        remo screenshot -a "$ADDR" -o "$ARTIFACTS_DIR/$name.jpg" --format jpeg --quality 0.8 2>/dev/null
+        echo "  [screenshot: $name.jpg]"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Phase 0: Build
+# ---------------------------------------------------------------------------
+
+log "Phase 0: Build"
+
+if [ "$SKIP_BUILD" = "1" ]; then
+    echo "  Skipping build (SKIP_BUILD=1)"
+    REMO_BIN="${REMO_BIN:-$ROOT/target/debug/remo}"
+    if [ ! -f "$REMO_BIN" ]; then
+        echo -e "${RED}ERROR:${RESET} remo binary not found at $REMO_BIN"
+        echo "Run without SKIP_BUILD or set REMO_BIN to an existing binary."
+        exit 1
+    fi
+else
+    log "Building iOS SDK (simulator)..."
+    (cd "$ROOT" && make ios-sim)
+
+    log "Building CLI..."
+    (cd "$ROOT" && cargo build -p remo-cli)
+    REMO_BIN="${REMO_BIN:-$ROOT/target/debug/remo}"
+
+    log "Building example app..."
+    # Find a booted simulator for the build destination
+    DEVICE_UUID="${DEVICE_UUID:-$(xcrun simctl list devices booted -j | jq -r '.devices[][] | select(.state == "Booted") | .udid' | head -1)}"
+    if [ -z "$DEVICE_UUID" ]; then
+        echo -e "${RED}ERROR:${RESET} No booted simulator found. Boot one with:"
+        echo "  xcrun simctl boot <UDID>"
+        exit 1
+    fi
+
+    REMO_LOCAL=1 xcodebuild build \
+        -workspace "$ROOT/examples/ios/RemoExample.xcworkspace" \
+        -scheme RemoExample \
+        -destination "platform=iOS Simulator,id=$DEVICE_UUID" \
+        -configuration Debug \
+        -quiet \
+        2>&1 | tail -5
+
+    # Find the built app bundle
+    APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "RemoExample.app" -path "*/Debug-iphonesimulator/*" -maxdepth 5 2>/dev/null | head -1)
+    if [ -z "$APP_PATH" ]; then
+        echo -e "${RED}ERROR:${RESET} Could not find built RemoExample.app in DerivedData"
+        exit 1
+    fi
+fi
+
+echo "  remo: $REMO_BIN"
+
+# ---------------------------------------------------------------------------
+# Phase 1: Install & Launch
+# ---------------------------------------------------------------------------
+
+log "Phase 1: Install & Launch"
+
+DEVICE_UUID="${DEVICE_UUID:-$(xcrun simctl list devices booted -j | jq -r '.devices[][] | select(.state == "Booted") | .udid' | head -1)}"
+DEVICE_NAME=$(xcrun simctl list devices -j | jq -r --arg uuid "$DEVICE_UUID" '.devices[][] | select(.udid == $uuid) | .name')
+echo "  Device: $DEVICE_NAME ($DEVICE_UUID)"
+
+# Find app path if not set during build phase
+if [ -z "${APP_PATH:-}" ]; then
+    APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "RemoExample.app" -path "*/Debug-iphonesimulator/*" -maxdepth 5 2>/dev/null | head -1)
+    if [ -z "$APP_PATH" ]; then
+        echo -e "${RED}ERROR:${RESET} RemoExample.app not found. Run without SKIP_BUILD first."
+        exit 1
+    fi
+fi
+
+# Stop the app on ALL booted simulators so only our fresh instance advertises.
+for uuid in $(xcrun simctl list devices booted -j | jq -r '.devices[][] | .udid'); do
+    xcrun simctl terminate "$uuid" com.remo.example 2>/dev/null || true
+done
+# Uninstall on target device to wipe persisted state
+xcrun simctl uninstall "$DEVICE_UUID" com.remo.example 2>/dev/null || true
+sleep 1
+
+# Stop any running daemon (we want direct TCP connections)
+"$REMO_BIN" stop 2>/dev/null || true
+sleep 0.5
+
+echo "  Installing $APP_PATH..."
+xcrun simctl install "$DEVICE_UUID" "$APP_PATH"
+
+echo "  Launching..."
+xcrun simctl launch "$DEVICE_UUID" com.remo.example
+APP_LAUNCHED=true
+
+# ---------------------------------------------------------------------------
+# Phase 2: Discover Port
+# ---------------------------------------------------------------------------
+
+log "Phase 2: Discover Remo Port"
+
+ADDR=""
+for attempt in 1 2 3 4 5; do
+    echo "  Attempt $attempt/5..."
+    sleep 3
+
+    # Parse remo devices output. The table line format is:
+    #   Bonjour          Name                           127.0.0.1:PORT
+    # Log lines from tracing also go to stdout with ANSI codes, so we
+    # strip ANSI first, then match table rows starting with "Bonjour ".
+    DEVICES_OUTPUT=$("$REMO_BIN" devices 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' || true)
+    ADDR=$(echo "$DEVICES_OUTPUT" \
+        | grep -E '^Bonjour ' \
+        | awk '{print $NF}' \
+        | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' \
+        | head -1 || true)
+
+    if [ -n "$ADDR" ]; then
+        # Verify with ping
+        if remo_call __ping '{}' 2>/dev/null | jq -e '.data.pong == true' >/dev/null 2>&1; then
+            echo "  Found device at $ADDR"
+            break
+        else
+            ADDR=""
+        fi
+    fi
+done
+
+if [ -z "$ADDR" ]; then
+    echo -e "${RED}ERROR:${RESET} Could not discover Remo device after 5 attempts"
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Phase 3: Setup Artifacts
+# ---------------------------------------------------------------------------
+
+mkdir -p "$ARTIFACTS_DIR"
+
+if [ "$OPT_RECORD" = true ]; then
+    log "Starting mirror recording..."
+    remo mirror -a "$ADDR" --save "$ARTIFACTS_DIR/recording.mp4" --fps 30 &
+    MIRROR_PID=$!
+    sleep 2
+    echo "  Recording to $ARTIFACTS_DIR/recording.mp4 (pid=$MIRROR_PID)"
+fi
+
+# ---------------------------------------------------------------------------
+# Phase 4: Exercise & Assert
+# ---------------------------------------------------------------------------
+
+log "Phase 4: Exercise Capabilities"
+
+# -- Connectivity --
+echo ""
+echo -e "${BOLD}[Connectivity]${RESET}"
+assert_call "ping" "__ping" '{}' '.data.pong == true'
+assert_call "device_info" "__device_info" '{}' '.data.system_name == "iOS"'
+assert_call "app_info" "__app_info" '{}' '.data.bundle_id == "com.remo.example"'
+
+maybe_screenshot "01-home-initial"
+
+# -- Counter --
+echo ""
+echo -e "${BOLD}[Counter]${RESET}"
+assert_call "counter.increment" "counter.increment" '{"amount":5}' '.data.amount == 5'
+sleep 0.3
+maybe_screenshot "02-counter-incremented"
+
+# -- UI Effects --
+echo ""
+echo -e "${BOLD}[UI Effects]${RESET}"
+assert_call "ui.toast" "ui.toast" '{"message":"E2E test toast"}' '.data.status == "ok"'
+sleep 1
+maybe_screenshot "03-toast"
+
+assert_call "ui.confetti" "ui.confetti" '{}' '.data.status == "ok"'
+sleep 0.5
+maybe_screenshot "04-confetti"
+
+assert_call "ui.setAccentColor" "ui.setAccentColor" '{"color":"purple"}' '.data.color == "purple"'
+sleep 0.3
+maybe_screenshot "05-accent-purple"
+
+# -- Navigation & Items --
+echo ""
+echo -e "${BOLD}[Navigation & Items]${RESET}"
+assert_call "navigate" "navigate" '{"route":"items"}' '.data.status == "ok"'
+sleep 1
+
+maybe_screenshot "06-items-default"
+
+assert_call "items.add" "items.add" '{"name":"Item X"}' '.data.status == "ok"'
+sleep 0.3
+maybe_screenshot "07-items-added"
+
+assert_call "items.remove" "items.remove" '{"name":"Item X"}' '.data.status == "ok"'
+sleep 0.3
+maybe_screenshot "08-items-removed"
+
+assert_call "items.clear" "items.clear" '{}' '.data.status == "ok"'
+sleep 0.3
+maybe_screenshot "09-items-cleared"
+
+# -- State round-trip --
+echo ""
+echo -e "${BOLD}[State]${RESET}"
+assert_call "state.set" "state.set" '{"key":"username","value":"E2E User"}' '.data.status == "ok"'
+sleep 0.3
+assert_call "state.get" "state.get" '{"key":"username"}' '.data.value == "E2E User"'
+
+# -- Remaining tabs (screenshots only, navigate already tested) --
+remo_call "navigate" '{"route":"activity"}' >/dev/null; sleep 0.5
+maybe_screenshot "10-activity"
+remo_call "navigate" '{"route":"settings"}' >/dev/null; sleep 0.5
+maybe_screenshot "11-settings"
+
+# -- Screenshot capability --
+echo ""
+echo -e "${BOLD}[Screenshot]${RESET}"
+SCREENSHOT_RESULT=$(remo screenshot -a "$ADDR" -o "$ARTIFACTS_DIR/test-screenshot.jpg" --format jpeg --quality 0.8 2>&1 || true)
+if [ -f "$ARTIFACTS_DIR/test-screenshot.jpg" ] && [ -s "$ARTIFACTS_DIR/test-screenshot.jpg" ]; then
+    pass "remo screenshot produces valid file"
+else
+    fail "remo screenshot — file missing or empty: $SCREENSHOT_RESULT"
+fi
+
+# ---------------------------------------------------------------------------
+# Phase 5: Stop Recording
+# ---------------------------------------------------------------------------
+
+if [ "$OPT_RECORD" = true ] && [ -n "$MIRROR_PID" ]; then
+    log "Stopping mirror recording..."
+    kill "$MIRROR_PID" 2>/dev/null || true
+    wait "$MIRROR_PID" 2>/dev/null || true
+    MIRROR_PID=""
+    sleep 1
+    if [ -f "$ARTIFACTS_DIR/recording.mp4" ] && [ -s "$ARTIFACTS_DIR/recording.mp4" ]; then
+        RECORDING_SIZE=$(ls -lh "$ARTIFACTS_DIR/recording.mp4" | awk '{print $5}')
+        pass "mirror recording saved ($RECORDING_SIZE)"
+    else
+        fail "mirror recording — file missing or empty"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "==========================================="
+TOTAL=$((PASS_COUNT + FAIL_COUNT))
+echo -e " ${BOLD}Results: $TOTAL tests${RESET}"
+echo -e "   ${GREEN}PASS: $PASS_COUNT${RESET}"
+if [ "$FAIL_COUNT" -gt 0 ]; then
+    echo -e "   ${RED}FAIL: $FAIL_COUNT${RESET}"
+else
+    echo -e "   FAIL: 0"
+fi
+echo "==========================================="
+
+if [ "$OPT_SCREENSHOTS" = true ] || [ "$OPT_RECORD" = true ]; then
+    echo -e " Artifacts: $ARTIFACTS_DIR"
+    ls -1 "$ARTIFACTS_DIR" 2>/dev/null | sed 's/^/   /'
+fi
+
+if [ "$FAIL_COUNT" -gt 0 ]; then
+    exit 1
+fi
