@@ -214,8 +214,10 @@ echo "  Installing $APP_PATH..."
 xcrun simctl install "$DEVICE_UUID" "$APP_PATH"
 
 echo "  Launching..."
-xcrun simctl launch "$DEVICE_UUID" com.remo.example
+LAUNCH_OUTPUT=$(xcrun simctl launch "$DEVICE_UUID" com.remo.example)
 APP_LAUNCHED=true
+APP_PID=$(echo "$LAUNCH_OUTPUT" | grep -oE '[0-9]+$' || true)
+echo "  PID: $APP_PID"
 
 # ---------------------------------------------------------------------------
 # Phase 2: Discover Port
@@ -223,35 +225,60 @@ APP_LAUNCHED=true
 
 log "Phase 2: Discover Remo Port"
 
+# Strategy 1: Use lsof to find the TCP port the app is listening on.
+# This is more reliable than Bonjour on CI runners where mDNS may not work.
 ADDR=""
-for attempt in 1 2 3 4 5; do
-    echo "  Attempt $attempt/5..."
-    sleep 3
-
-    # Parse remo devices output. The table line format is:
-    #   Bonjour          Name                           127.0.0.1:PORT
-    # Log lines from tracing also go to stdout with ANSI codes, so we
-    # strip ANSI first, then match table rows starting with "Bonjour ".
-    DEVICES_OUTPUT=$("$REMO_BIN" devices 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' || true)
-    ADDR=$(echo "$DEVICES_OUTPUT" \
-        | grep -E '^Bonjour ' \
-        | awk '{print $NF}' \
-        | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' \
-        | head -1 || true)
-
-    if [ -n "$ADDR" ]; then
-        # Verify with ping
-        if remo_call __ping '{}' 2>/dev/null | jq -e '.data.pong == true' >/dev/null 2>&1; then
-            echo "  Found device at $ADDR"
-            break
-        else
-            ADDR=""
+if [ -n "$APP_PID" ]; then
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        echo "  Attempt $attempt/10 (lsof)..."
+        sleep 2
+        PORT=$(lsof -nP -iTCP -sTCP:LISTEN -a -p "$APP_PID" 2>/dev/null \
+            | awk '/LISTEN/{print $9}' \
+            | grep -oE '[0-9]+$' \
+            | head -1 || true)
+        if [ -n "$PORT" ]; then
+            ADDR="127.0.0.1:$PORT"
+            # Verify with ping
+            if remo_call __ping '{}' 2>/dev/null | jq -e '.data.pong == true' >/dev/null 2>&1; then
+                echo "  Found device at $ADDR (via lsof)"
+                break
+            else
+                ADDR=""
+            fi
         fi
-    fi
-done
+    done
+fi
+
+# Strategy 2: Fall back to Bonjour discovery if lsof didn't work.
+if [ -z "$ADDR" ]; then
+    echo "  Falling back to Bonjour discovery..."
+    for attempt in 1 2 3 4 5; do
+        echo "  Attempt $attempt/5 (Bonjour)..."
+        sleep 3
+        DEVICES_OUTPUT=$("$REMO_BIN" devices 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' || true)
+        ADDR=$(echo "$DEVICES_OUTPUT" \
+            | grep -E '^Bonjour ' \
+            | awk '{print $NF}' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' \
+            | head -1 || true)
+
+        if [ -n "$ADDR" ]; then
+            if remo_call __ping '{}' 2>/dev/null | jq -e '.data.pong == true' >/dev/null 2>&1; then
+                echo "  Found device at $ADDR (via Bonjour)"
+                break
+            else
+                ADDR=""
+            fi
+        fi
+    done
+fi
 
 if [ -z "$ADDR" ]; then
-    echo -e "${RED}ERROR:${RESET} Could not discover Remo device after 5 attempts"
+    echo -e "${RED}ERROR:${RESET} Could not discover Remo device after all attempts"
+    echo "  lsof output for PID $APP_PID:"
+    lsof -nP -iTCP -a -p "$APP_PID" 2>&1 || echo "  (lsof failed)"
+    echo "  remo devices output:"
+    "$REMO_BIN" devices 2>&1 | head -20 || echo "  (remo devices failed)"
     exit 1
 fi
 
