@@ -41,6 +41,10 @@ typedef NSDictionary<NSString *, id> *_Nonnull (^RMRemoCapabilityHandler)(NSDict
 /// Register a capability that can be invoked from macOS.
 + (void)registerCapability:(NSString *)name handler:(RMRemoCapabilityHandler)handler;
 
+/// Unregister a capability by name.
+/// Returns YES if the capability was found and removed.
++ (BOOL)unregisterCapability:(NSString *)name;
+
 /// List all registered capability names.
 + (NSArray<NSString *> *)listCapabilities;
 

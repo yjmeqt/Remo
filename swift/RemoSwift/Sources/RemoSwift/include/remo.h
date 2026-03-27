@@ -1,6 +1,7 @@
 #ifndef REMO_H
 #define REMO_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -26,6 +27,10 @@ typedef char* (*remo_capability_callback)(void* context, const char* params_json
 void remo_register_capability(const char* name,
                               void* context,
                               remo_capability_callback callback);
+
+/// Unregister a capability by name.
+/// Returns true if the capability was found and removed.
+bool remo_unregister_capability(const char* name);
 
 /// Free a Rust-allocated string.
 void remo_free_string(char* ptr);

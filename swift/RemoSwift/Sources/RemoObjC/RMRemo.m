@@ -72,6 +72,10 @@ static dispatch_once_t _startOnce;
     remo_register_capability(name.UTF8String, context, RMRemoTrampoline);
 }
 
++ (BOOL)unregisterCapability:(NSString *)name {
+    return remo_unregister_capability(name.UTF8String);
+}
+
 + (NSArray<NSString *> *)listCapabilities {
     [self ensureStarted];
 
@@ -102,6 +106,7 @@ static dispatch_once_t _startOnce;
 + (void)start {}
 + (void)stop {}
 + (void)registerCapability:(NSString *)name handler:(RMRemoCapabilityHandler)handler {}
++ (BOOL)unregisterCapability:(NSString *)name { return NO; }
 + (NSArray<NSString *> *)listCapabilities { return @[]; }
 
 @end

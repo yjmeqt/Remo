@@ -2387,6 +2387,11 @@ function connectEvents() {
         onDeviceDisconnected(data.payload?.reason);
         return;
       }
+      if (kind === "capabilities_changed") {
+        loadCapabilities();
+        termLog("system", `Capabilities changed: ${data.payload?.action || ""} ${data.payload?.name || ""}`);
+        return;
+      }
 
       termLog("event", JSON.stringify(data));
     } catch {
