@@ -74,7 +74,7 @@ public final class Remo {
 
     /// Unregister a capability by name.
     ///
-    /// Returns `true` if the capability existed and was removed.
+    /// Returns `true` if the capability was found and removed.
     @discardableResult
     public static func unregister(_ name: String) -> Bool {
         name.withCString { namePtr in

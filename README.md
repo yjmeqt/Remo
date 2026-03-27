@@ -70,6 +70,9 @@ Remo.register("myFeature.toggle") { params in
     FeatureFlags.shared.myFeature = enabled
     return ["toggled": enabled]
 }
+
+// Unregister when no longer needed (e.g., in .onDisappear):
+Remo.unregister("myFeature.toggle")
 ```
 
 **Objective-C**
@@ -84,6 +87,9 @@ Remo.register("myFeature.toggle") { params in
     [FeatureFlags shared].myFeature = enabled;
     return @{@"toggled": @(enabled)};
 }];
+
+// Unregister when no longer needed:
+[RMRemo unregisterCapability:@"myFeature.toggle"];
 ```
 
 Capabilities can be unregistered dynamically — useful for page-level or conditional capabilities:
@@ -171,6 +177,9 @@ remo mirror -a <addr> --web               # Live screen mirror (H.264 → fMP4)
 remo mirror -a <addr> --save out.mp4      # Record screen to file
 remo watch -a <addr>                      # Stream events from device
 remo dashboard                            # Web demo page
+remo start [-d]                           # Start the daemon (foreground or background)
+remo stop                                 # Stop the daemon
+remo status                               # Check daemon health and device count
 ```
 
 ## Built-in Capabilities
@@ -224,6 +233,7 @@ cargo build -p remo-cli              # Build the CLI
 | `remo-sdk` | iOS embedded server + capability registry + C FFI |
 | `remo-objc` | ObjC runtime bridge via `objc2` (view tree, screenshot, device info) |
 | `remo-desktop` | macOS library — device manager, RPC client, web dashboard, fMP4 muxer |
+| `remo-daemon` | Background daemon — connection pool, HTTP/WebSocket API, event bus |
 | `remo-cli` | CLI entry point |
 
 ### Project Status
@@ -231,7 +241,8 @@ cargo build -p remo-cli              # Build the CLI
 **v0.3.0** — See [SPEC.md](SPEC.md) for the full architecture.
 
 #### Roadmap
-- [ ] Auto-reconnection on disconnect
+- [x] Auto-reconnection on disconnect (daemon ConnectionPool)
+- [x] Capability change events + dynamic unregister API
 - [ ] macOS GUI (SwiftUI device inspector)
 - [ ] View property modification (`__view_set`)
 - [ ] Protocol versioning / handshake

@@ -1,7 +1,7 @@
 # Remo — Project Specification
 
-> Version: 0.3.0-dev
-> Last updated: 2026-03-22
+> Version: 0.5.0-dev
+> Last updated: 2026-03-27
 
 ## 1. Vision
 
@@ -88,7 +88,8 @@ The SDK starts a TCP server inside the app. Real devices are discovered via USB 
 | `remo-sdk` | iOS | Embedded TCP server + capability registry + built-in capabilities + C ABI FFI layer | remo-protocol, remo-transport, remo-objc, remo-bonjour, base64, dashmap |
 | `remo-objc` | iOS* | ObjC runtime bridge: view tree, screenshot, device/app info, GCD main-thread dispatch | objc2, objc2-foundation, objc2-ui-kit |
 | `remo-desktop` | macOS | Device manager, RPC client, web dashboard, fMP4 muxer, stream receiver | remo-protocol, remo-transport, remo-usbmuxd, remo-bonjour, axum |
-| `remo-cli` | macOS | CLI tool: `devices`, `dashboard`, `call`, `list`, `watch`, `tree`, `screenshot`, `info`, `mirror` | remo-desktop, clap, base64 |
+| `remo-daemon` | macOS | Background daemon: device connection pool, HTTP/WebSocket API, event bus | remo-desktop, remo-protocol, axum, tokio |
+| `remo-cli` | macOS | CLI tool: `devices`, `dashboard`, `call`, `list`, `watch`, `tree`, `screenshot`, `info`, `mirror`, `start`, `stop`, `status` | remo-desktop, remo-daemon, clap, base64 |
 
 *`remo-objc` compiles on all platforms with stubs; real UIKit access requires the `uikit` feature and an Apple target.
 
@@ -98,7 +99,7 @@ The SDK starts a TCP server inside the app. Real devices are discovered via USB 
 |---|---|
 | `remo.h` | Manually maintained C header for the FFI boundary |
 | `CRemo` module | SPM binary target wrapping `RemoSDK.xcframework` |
-| `RemoSwift` package | Thin Swift wrapper with zero-config auto-start: `Remo.register("name") { ... }`. Debug-only (`#if DEBUG`). Server starts automatically on first API access (random port on simulator, 9930 on device). |
+| `RemoSwift` package | Thin Swift wrapper with zero-config auto-start: `Remo.register("name") { ... }`, `Remo.unregister("name")`. Debug-only (`#if DEBUG`). Server starts automatically on first API access (random port on simulator, 9930 on device). |
 | `RemoExample` app | Demo app: 4 tabs (Home, Items, Activity Log, Settings), 10+ capabilities. |
 
 ---
@@ -270,17 +271,21 @@ type BoxedHandler = Arc<dyn Fn(Value) -> Pin<Box<dyn Future<Output = HandlerResu
 
 Handlers return `Result<serde_json::Value, HandlerError>`.
 
+**Capability change events**: The registry holds an optional `tokio::sync::broadcast::Sender`. When a capability is registered or unregistered, it emits a `capabilities_changed` event containing the action (`"registered"` or `"unregistered"`), the capability name, and the full updated capability list. The server injects the broadcast sender on startup so events are forwarded to connected clients as push events.
+
 ### 5.2 FFI boundary
 
-The Rust static library exposes 5 C functions:
+The Rust static library exposes 7 C functions:
 
 | Function | Signature | Description |
 |---|---|---|
 | `remo_start` | `(port: u16)` | Start tokio runtime + TCP server. Idempotent — auto-called by Swift wrapper on first API access. |
 | `remo_stop` | `()` | Graceful shutdown |
 | `remo_register_capability` | `(name: *const c_char, context: *mut c_void, callback: fn)` | Register a Swift handler |
+| `remo_unregister_capability` | `(name: *const c_char) -> bool` | Unregister a capability by name. Returns true if found and removed. |
 | `remo_free_string` | `(ptr: *mut c_char)` | Free a Rust-allocated string |
 | `remo_list_capabilities` | `() -> *mut c_char` | Return JSON array of names |
+| `remo_get_port` | `() -> u16` | Return the actual port the server is listening on (0 if not started) |
 
 **Callback convention**: Swift allocates the return string with `strdup()`. Rust reads it and calls `free()`. The `context` pointer is an `Unmanaged<HandlerBox>.toOpaque()` that Swift retains.
 
@@ -348,6 +353,11 @@ Each device connection gets an `RpcClient` instance:
 | `remo screenshot -a <addr>` | Capture screenshot to file | `remo screenshot -a 127.0.0.1:51363 -o shot.jpg` |
 | `remo info -a <addr>` | Show device and app info | `remo info -a 127.0.0.1:51363` |
 | `remo mirror -a <addr>` | Live screen mirror | `remo mirror -a 127.0.0.1:51363 --web --port 8090` |
+| `remo start` | Start the daemon (foreground or background) | `remo start --port 19630 -d` |
+| `remo stop` | Stop the daemon | `remo stop` |
+| `remo status` | Check daemon health and device count | `remo status` |
+
+**Daemon fallback**: All existing commands (`call`, `list`, `screenshot`, etc.) first check for a running daemon via `~/.remo/daemon.json`. If the daemon is alive, requests are routed through its HTTP API; if not, the CLI falls back to a direct TCP connection. `remo dashboard` auto-starts the daemon.
 
 ### 6.4 Web dashboard
 
@@ -388,6 +398,41 @@ Screen mirroring flows through:
 3. **Desktop**: `StreamReceiver` collects frames → `Mp4Muxer` wraps in fMP4 (init segment + moof/mdat) → WebSocket binary to browser
 4. **Browser**: MSE `MediaSource` API appends fMP4 segments to `<video>` element
 
+### 6.6 Daemon (`remo-daemon`)
+
+A long-running background process that acts as the central hub for all device connections and client interactions.
+
+**Lifecycle**: Started via `remo start` (foreground or `-d` for background). Stores PID and port in `~/.remo/daemon.json`. Graceful shutdown via `remo stop` or SIGTERM.
+
+**ConnectionPool**: Manages device connections with automatic lifecycle:
+- Auto-connects on device discovery via Bonjour/USB
+- Sends `__ping` keepalive every 5 seconds
+- Detects disconnection after 3 consecutive 2-second timeouts
+- Auto-reconnects with exponential backoff
+- Device state machine: `discovered → connecting → connected → disconnected`
+
+**HTTP API**:
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/devices` | GET | List discovered devices + connection state |
+| `/devices/{id}/connect` | POST | Manual connection |
+| `/devices/{id}/disconnect` | POST | Disconnect device |
+| `/call` | POST | Invoke capability (`await` or `fire` mode) |
+| `/events?since=<cursor>` | GET | Poll event buffer |
+| `/webhooks/{id}` | DELETE | Webhook management |
+| `/ws/events` | GET | WebSocket event subscription |
+| `/status` | GET | Daemon health |
+| `/capabilities` | GET | List capabilities |
+| `/screenshot` | POST | Capture screenshot |
+| `/ws/stream` | GET | Video stream WebSocket |
+
+**EventBus**: Ring buffer (default 1000 events) with atomic sequence numbering and broadcast channel for WebSocket subscribers. Event types: `device_discovered`, `device_lost`, `connection_established`, `connection_lost`, `connection_restored`, `call_completed`, `call_failed`, `capabilities_changed`, `app_event`.
+
+**Call modes**:
+- **await** (default): Synchronous — blocks until iOS responds (default 30s timeout).
+- **fire**: Returns immediately with `call_id`; completion delivered as an event.
+
 ---
 
 ## 7. Example app (`RemoExample`)
@@ -396,20 +441,29 @@ A SwiftUI app demonstrating full SDK integration:
 
 **Pages**: Home (counter + toast + confetti), Items (list with add/delete), Activity Log (real-time log), Settings (accent color picker + debug info).
 
-The example app demonstrates both built-in and custom capabilities. Built-in capabilities (`__view_tree`, `__screenshot`, `__device_info`, `__app_info`) are available automatically. Custom registered capabilities include:
+The example app demonstrates both built-in and custom capabilities. Built-in capabilities (`__view_tree`, `__screenshot`, `__device_info`, `__app_info`) are available automatically.
+
+**Global capabilities** (always registered via `setupRemo()`):
 
 | Capability | Params | Effect |
 |---|---|---|
-| `counter.increment` | `{"amount": 5}` | Increments counter by amount |
-| `counter.reset` | none | Resets counter to 0 |
-| `state.get` | `{"key": "counter"}` | Returns the current value |
+| `navigate` | `{"route": "home"\|"items"\|"log"\|"settings"}` | Switch to a tab |
+| `state.get` | `{"key": "counter"\|"items"\|"route"\|"accentColor"}` | Returns the current value |
 | `state.set` | `{"key": "counter", "value": 42}` | Mutates the store |
-| `items.add` | `{"item": "..."}` | Add item to list |
-| `items.remove` | `{"index": 0}` | Remove item by index |
-| `items.list` | none | List all items |
-| `toast.show` | `{"message": "..."}` | Show a toast overlay |
-| `confetti.fire` | none | Trigger confetti animation |
-| `accentColor.set` | `{"color": "red"}` | Change app accent color |
+| `ui.toast` | `{"message": "..."}` | Show a toast overlay |
+| `ui.confetti` | none | Trigger confetti animation |
+| `ui.setAccentColor` | `{"color": "red"}` | Change app accent color |
+
+**Page-scoped capabilities** (registered on `.onAppear`, unregistered on `.onDisappear`):
+
+| Capability | Available on | Params | Effect |
+|---|---|---|---|
+| `counter.increment` | Home tab | `{"amount": 5}` | Increments counter by amount |
+| `items.add` | Items tab | `{"name": "..."}` | Add item to list |
+| `items.remove` | Items tab | `{"index": 0}` | Remove item by index (or last) |
+| `items.clear` | Items tab | none | Remove all items |
+
+This per-view registration pattern demonstrates dynamic capability lifecycle — the dashboard's capability panel updates in real time as the user navigates between tabs, driven by `capabilities_changed` events.
 
 ---
 
@@ -468,7 +522,7 @@ CI also runs `xcodebuild test` for the Swift package to verify the XCFramework +
 
 ## 9. Current status & known gaps
 
-### 9.1 What is implemented (v0.2.0)
+### 9.1 What is implemented (v0.4.0)
 
 | Component | Status |
 |---|---|
@@ -476,13 +530,14 @@ CI also runs `xcodebuild test` for the Swift package to verify the XCFramework +
 | `remo-transport` (Connection + Listener) | Complete |
 | `remo-usbmuxd` (client, types, Listen, Connect) | Complete |
 | `remo-bonjour` (service registration + discovery) | Complete |
-| `remo-sdk` (server, registry, built-in capabilities, FFI) | Complete |
+| `remo-sdk` (server, registry, built-in capabilities, FFI, capability change events) | Complete |
 | `remo-objc` (view tree, screenshot, device/app info, main-thread dispatch) | Complete |
-| `remo-desktop` (device manager w/ USB + Bonjour, RPC client) | Complete |
-| `remo-cli` (devices, call, list, watch, tree, screenshot, info) | Complete |
-| `RemoSwift` (FFI wrapper, debug-only) | Complete |
-| `RemoExample` (demo app w/ 4 tabs, 10+ capabilities) | Complete |
-| Integration test | Complete |
+| `remo-desktop` (device manager w/ USB + Bonjour, RPC client, dashboard) | Complete |
+| `remo-daemon` (connection pool, HTTP/WS API, event bus, keepalive) | Complete |
+| `remo-cli` (devices, call, list, watch, tree, screenshot, info, mirror, start, stop, status) | Complete |
+| `RemoSwift` (FFI wrapper incl. register/unregister, debug-only) | Complete |
+| `RemoExample` (demo app w/ 4 tabs, per-view capability lifecycle) | Complete |
+| Integration test + daemon API tests | Complete |
 | CI/CD pipeline (check, lint, test, build, release) | Complete |
 | SPM distribution (`remo-spm` binary package) | Complete |
 
@@ -494,6 +549,7 @@ CI also runs `xcodebuild test` for the Swift package to verify the XCFramework +
 | T-002 | USB tunnel not wired to RPC | **Fixed.** `remo-transport` supports `UnixStream` via `IoStream` enum. |
 | T-005 | Only view tree implemented in `remo-objc` | **Fixed.** Added screenshot, device info, app info, main-thread dispatch. |
 | T-006 | No Bonjour/mDNS discovery | **Fixed.** `remo-bonjour` crate: iOS advertises, macOS browses. |
+| T-003 | No reconnection logic | **Fixed.** `remo-daemon` ConnectionPool auto-reconnects with exponential backoff. |
 | T-008 | `staticlib` not in Cargo.toml | **Fixed.** Feature-gated `crate-type = ["staticlib"]` in `remo-sdk`. |
 | T-012 | No CI pipeline | **Fixed.** GitHub Actions: check, fmt, clippy, test, iOS build, Swift integration. |
 
@@ -503,8 +559,7 @@ CI also runs `xcodebuild test` for the Swift package to verify the XCFramework +
 
 | ID | Component | Issue | Detail |
 |---|---|---|---|
-| T-003 | `remo-transport` | No reconnection logic | If a device disconnects, the client should auto-reconnect with exponential backoff. |
-| T-004 | `remo-sdk` | No event push from iOS | The `Event` message type is defined but nothing sends events yet. Need `remo_emit_event()` in FFI. |
+| T-004 | `remo-sdk` | Limited event push from iOS | `capabilities_changed` events are now emitted. General-purpose `remo_emit_event()` FFI for arbitrary app events is still needed. |
 | T-007 | `remo-cli` | `devices` command requires usbmuxd | Fails on machines without usbmuxd (Linux CI). Should gracefully handle missing socket. |
 
 #### P2 — Nice to have
@@ -578,7 +633,8 @@ remo/
 │       ├── ci.yml                          # PR checks: fmt, clippy, test, iOS build, Swift integration
 │       └── release.yml                     # Tag-triggered: build XCFramework, push to remo-spm
 ├── tests/
-│   └── integration.rs                      # Full round-trip server + client test
+│   ├── integration.rs                      # Full round-trip server + client test
+│   └── daemon_integration.rs               # Daemon HTTP API integration tests
 ├── crates/
 │   ├── remo-protocol/
 │   │   ├── Cargo.toml
@@ -634,10 +690,19 @@ remo/
 │   │       └── web_player/
 │   │           ├── mod.rs                  # Standalone web player server
 │   │           └── player.html             # MSE video player page
+│   ├── remo-daemon/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── daemon.rs                   # Daemon lifecycle, auto-connect, webhook dispatch
+│   │       ├── connection_pool.rs          # Device connection management + keepalive
+│   │       ├── event_bus.rs                # Ring buffer + broadcast event system
+│   │       ├── api.rs                      # HTTP/WebSocket API endpoints (axum)
+│   │       └── types.rs                    # Shared daemon types
 │   └── remo-cli/
 │       ├── Cargo.toml
 │       └── src/
-│           └── main.rs                     # CLI: devices, call, list, watch, tree, screenshot, info
+│           └── main.rs                     # CLI: devices, call, list, watch, tree, screenshot, info, start, stop, status
 ├── swift/
 │   ├── RemoSwift/
 │   │   ├── Package.swift                   # SPM package
@@ -693,15 +758,24 @@ remo/
 - Web dashboard with multi-device discovery, device selector, video streaming, screenshots, capabilities panel
 - `remo dashboard` and `remo mirror` CLI commands
 
-### M7: Event streaming (next)
-- Implement T-004 (event push FFI + observation tracking)
+### ~~M7: Daemon + capability events~~ Done (v0.5.0-dev)
+- `remo-daemon` crate: ConnectionPool, EventBus, HTTP/WebSocket API
+- CLI `start`/`stop`/`status` commands with daemon fallback for all existing commands
+- `capabilities_changed` events emitted on register/unregister
+- `Remo.unregister()` API (Swift + ObjC + FFI)
+- Per-view capability lifecycle in example app (`.onAppear`/`.onDisappear`)
+- Dashboard handles `capabilities_changed` events for real-time updates
+- Auto-reconnection with exponential backoff (T-003)
+
+### M8: Event streaming
+- Extend T-004: general-purpose `remo_emit_event()` FFI for arbitrary app events
 - `remo watch` receives live state changes
 
-### M8: macOS GUI
+### M9: macOS GUI
 - Implement T-009 (desktop app)
 - Device list, live view tree, state editor, event log
 
-### M9: Production readiness
-- Implement T-003 (reconnection), T-015 (handshake)
+### M10: Production readiness
+- Implement T-015 (handshake/protocol versioning)
 - View property modification (T-016)
 - Audit T-014 (thread safety)

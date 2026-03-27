@@ -42,7 +42,7 @@ typedef NSDictionary<NSString *, id> *_Nonnull (^RMRemoCapabilityHandler)(NSDict
 + (void)registerCapability:(NSString *)name handler:(RMRemoCapabilityHandler)handler;
 
 /// Unregister a capability by name.
-/// Returns YES if the capability existed and was removed.
+/// Returns YES if the capability was found and removed.
 + (BOOL)unregisterCapability:(NSString *)name;
 
 /// List all registered capability names.

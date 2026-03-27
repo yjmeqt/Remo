@@ -156,6 +156,22 @@ enum Command {
         #[arg(long, default_value = "8080")]
         port: u16,
     },
+
+    /// Start the Remo daemon.
+    Start {
+        /// Port to listen on.
+        #[arg(long, default_value = "19630")]
+        port: u16,
+        /// Run in background (daemonize).
+        #[arg(short = 'd', long)]
+        daemon: bool,
+    },
+
+    /// Stop the running Remo daemon.
+    Stop,
+
+    /// Show daemon status.
+    Status,
 }
 
 #[tokio::main]
@@ -180,41 +196,70 @@ async fn main() -> Result<()> {
             params,
             timeout,
         } => {
-            let params: serde_json::Value = serde_json::from_str(&params)?;
-            let (event_tx, _event_rx) = mpsc::channel(16);
-            let client = connect(device, addr, event_tx).await?;
+            // Try daemon first
+            if let Some((http_client, base_url)) = try_daemon_client() {
+                println!("Calling '{capability}' via daemon...");
+                let body = serde_json::json!({
+                    "capability": capability,
+                    "params": serde_json::from_str::<serde_json::Value>(&params)?,
+                    "timeout_ms": timeout * 1000,
+                });
+                let resp = http_client
+                    .post(format!("{base_url}/call"))
+                    .json(&body)
+                    .send()
+                    .await?;
+                let json: serde_json::Value = resp.json().await?;
+                let pretty = serde_json::to_string_pretty(&json)?;
+                println!("{pretty}");
+            } else {
+                let params: serde_json::Value = serde_json::from_str(&params)?;
+                let (event_tx, _event_rx) = mpsc::channel(16);
+                let client = connect(device, addr, event_tx).await?;
 
-            let target = device
-                .map(|d| format!("device:{d}"))
-                .unwrap_or_else(|| addr.to_string());
-            println!("Calling '{capability}' on {target}...");
-            let rpc_response = client
-                .call(&capability, params, Duration::from_secs(timeout))
-                .await?;
-            let response = match rpc_response {
-                RpcResponse::Json(r) => r,
-                RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
-            };
-            let json = serde_json::to_string_pretty(&response)?;
-            println!("{json}");
+                let target = device
+                    .map(|d| format!("device:{d}"))
+                    .unwrap_or_else(|| addr.to_string());
+                println!("Calling '{capability}' on {target}...");
+                let rpc_response = client
+                    .call(&capability, params, Duration::from_secs(timeout))
+                    .await?;
+                let response = match rpc_response {
+                    RpcResponse::Json(r) => r,
+                    RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
+                };
+                let json = serde_json::to_string_pretty(&response)?;
+                println!("{json}");
+            }
         }
         Command::List { addr, device } => {
-            let (event_tx, _) = mpsc::channel(16);
-            let client = connect(device, addr, event_tx).await?;
+            // Try daemon first
+            if let Some((http_client, base_url)) = try_daemon_client() {
+                let resp = http_client
+                    .get(format!("{base_url}/capabilities"))
+                    .send()
+                    .await?;
+                let json: serde_json::Value = resp.json().await?;
+                let pretty = serde_json::to_string_pretty(&json)?;
+                println!("{pretty}");
+            } else {
+                let (event_tx, _) = mpsc::channel(16);
+                let client = connect(device, addr, event_tx).await?;
 
-            let rpc_response = client
-                .call(
-                    "__list_capabilities",
-                    serde_json::json!({}),
-                    Duration::from_secs(5),
-                )
-                .await?;
-            let response = match rpc_response {
-                RpcResponse::Json(r) => r,
-                RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
-            };
-            let json = serde_json::to_string_pretty(&response)?;
-            println!("{json}");
+                let rpc_response = client
+                    .call(
+                        "__list_capabilities",
+                        serde_json::json!({}),
+                        Duration::from_secs(5),
+                    )
+                    .await?;
+                let response = match rpc_response {
+                    RpcResponse::Json(r) => r,
+                    RpcResponse::Binary(_) => anyhow::bail!("unexpected binary response"),
+                };
+                let json = serde_json::to_string_pretty(&response)?;
+                println!("{json}");
+            }
         }
         Command::Watch { addr, device } => {
             let (event_tx, mut event_rx) = mpsc::channel(64);
@@ -243,10 +288,40 @@ async fn main() -> Result<()> {
             format,
             quality,
         } => {
-            cmd_screenshot(addr, device, &output, &format, quality).await?;
+            // Try daemon first
+            if let Some((http_client, base_url)) = try_daemon_client() {
+                let resp = http_client
+                    .post(format!("{base_url}/screenshot"))
+                    .send()
+                    .await?;
+                if resp.status().is_success() {
+                    let bytes = resp.bytes().await?;
+                    std::fs::write(&output, &bytes)?;
+                    println!(
+                        "Screenshot saved to {output} ({} bytes, via daemon)",
+                        bytes.len()
+                    );
+                } else {
+                    let json: serde_json::Value = resp
+                        .json()
+                        .await
+                        .unwrap_or_else(|_| serde_json::json!({"error": "unknown error"}));
+                    anyhow::bail!("daemon screenshot failed: {}", json);
+                }
+            } else {
+                cmd_screenshot(addr, device, &output, &format, quality).await?;
+            }
         }
         Command::Info { addr, device } => {
-            cmd_info(addr, device).await?;
+            // Try daemon first
+            if let Some((http_client, base_url)) = try_daemon_client() {
+                let resp = http_client.get(format!("{base_url}/status")).send().await?;
+                let json: serde_json::Value = resp.json().await?;
+                let pretty = serde_json::to_string_pretty(&json)?;
+                println!("{pretty}");
+            } else {
+                cmd_info(addr, device).await?;
+            }
         }
         Command::Dashboard { port, no_open } => {
             cmd_dashboard(port, no_open).await?;
@@ -260,6 +335,15 @@ async fn main() -> Result<()> {
             port,
         } => {
             cmd_mirror(addr, device, fps, web, save, port).await?;
+        }
+        Command::Start { port, daemon } => {
+            cmd_start(port, daemon).await?;
+        }
+        Command::Stop => {
+            cmd_stop()?;
+        }
+        Command::Status => {
+            cmd_status().await?;
         }
     }
 
@@ -522,6 +606,11 @@ async fn cmd_info(addr: SocketAddr, device: Option<u32>) -> Result<()> {
 async fn cmd_dashboard(port: u16, no_open: bool) -> Result<()> {
     use remo_desktop::DeviceManager;
 
+    // ------------------------------------------------------------------
+    // Ensure a daemon is running alongside the dashboard.
+    // ------------------------------------------------------------------
+    let auto_started_daemon = ensure_daemon_running().await?;
+
     let (dm, dm_event_rx) = DeviceManager::new();
 
     // Start discovery (failures are non-fatal — we just won't see those device types)
@@ -559,7 +648,78 @@ async fn cmd_dashboard(port: u16, no_open: bool) -> Result<()> {
     println!("\nShutting down...");
 
     let _ = shutdown_tx.send(());
+
+    // If we auto-started the daemon, stop it on exit.
+    if auto_started_daemon {
+        stop_auto_started_daemon();
+    }
+
     Ok(())
+}
+
+/// Ensure a daemon is running. Returns `true` if we spawned one ourselves.
+async fn ensure_daemon_running() -> Result<bool> {
+    // Check if a daemon is already running.
+    if let Some(info) = remo_daemon::read_daemon_info() {
+        if remo_daemon::is_daemon_alive(&info) {
+            println!(
+                "Daemon detected at port {}, dashboard will use daemon API",
+                info.port
+            );
+            return Ok(false);
+        }
+    }
+
+    // No daemon running — auto-start one in the background.
+    println!("No daemon detected, auto-starting daemon...");
+    let daemon_port: u16 = 19630;
+    let exe = std::env::current_exe()?;
+    let _child = std::process::Command::new(exe)
+        .args(["start", "--port", &daemon_port.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+
+    // Poll for daemon readiness (up to ~3 seconds).
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    let mut ready = false;
+    while tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        if let Some(info) = remo_daemon::read_daemon_info() {
+            if remo_daemon::is_daemon_alive(&info) {
+                println!("Daemon started on port {}", info.port);
+                ready = true;
+                break;
+            }
+        }
+    }
+
+    if !ready {
+        eprintln!("Warning: daemon did not become ready within 3 seconds, continuing anyway");
+    }
+
+    Ok(true)
+}
+
+/// Send SIGTERM to the auto-started daemon so it shuts down with the dashboard.
+#[cfg(unix)]
+fn stop_auto_started_daemon() {
+    if let Some(info) = remo_daemon::read_daemon_info() {
+        if remo_daemon::is_daemon_alive(&info) {
+            println!("Stopping auto-started daemon (pid={})...", info.pid);
+            // SAFETY: sending SIGTERM to a known-alive process we own.
+            #[allow(unsafe_code)]
+            unsafe {
+                libc::kill(info.pid as i32, libc::SIGTERM);
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn stop_auto_started_daemon() {
+    // No-op on non-unix platforms.
 }
 
 async fn cmd_mirror(
@@ -638,6 +798,114 @@ async fn cmd_mirror(
         handle.await?;
         if let Some(path) = &save {
             println!("Saved to {path}");
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Daemon helper
+// ---------------------------------------------------------------------------
+
+/// Try to connect to a running daemon. Returns a reqwest client and base URL
+/// if a daemon is alive, otherwise `None` (fall through to direct connect).
+fn try_daemon_client() -> Option<(reqwest::Client, String)> {
+    let info = remo_daemon::read_daemon_info()?;
+    if !remo_daemon::is_daemon_alive(&info) {
+        return None;
+    }
+    Some((
+        reqwest::Client::new(),
+        format!("http://127.0.0.1:{}", info.port),
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// Daemon commands
+// ---------------------------------------------------------------------------
+
+async fn cmd_start(port: u16, daemon: bool) -> Result<()> {
+    if daemon {
+        // Fork to background: re-exec self with `start --port N` (without -d)
+        let exe = std::env::current_exe()?;
+        let child = std::process::Command::new(exe)
+            .args(["start", "--port", &port.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        println!("Daemon started in background (pid={})", child.id());
+        return Ok(());
+    }
+
+    // Foreground mode: run the daemon directly
+    let d = remo_daemon::Daemon::new(port);
+    d.run()
+        .await
+        .map_err(|e| anyhow::anyhow!("daemon exited with error: {e}"))?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn cmd_stop() -> Result<()> {
+    let Some(info) = remo_daemon::read_daemon_info() else {
+        anyhow::bail!("no daemon running (daemon.json not found)");
+    };
+
+    if !remo_daemon::is_daemon_alive(&info) {
+        remo_daemon::remove_daemon_info_public();
+        anyhow::bail!(
+            "no daemon running (stale daemon.json for pid={}, removed)",
+            info.pid
+        );
+    }
+
+    // SAFETY: sending SIGTERM to a known-alive process we own.
+    #[allow(unsafe_code)]
+    unsafe {
+        libc::kill(info.pid as i32, libc::SIGTERM);
+    }
+
+    println!("Sent SIGTERM to daemon (pid={})", info.pid);
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn cmd_stop() -> Result<()> {
+    anyhow::bail!("daemon stop is not supported on this platform");
+}
+
+async fn cmd_status() -> Result<()> {
+    let Some(info) = remo_daemon::read_daemon_info() else {
+        println!("Daemon is not running.");
+        return Ok(());
+    };
+
+    if !remo_daemon::is_daemon_alive(&info) {
+        println!(
+            "Daemon is not running (stale daemon.json for pid={}).",
+            info.pid
+        );
+        return Ok(());
+    }
+
+    println!("Daemon is running (pid={}, port={})", info.pid, info.port);
+
+    // Fetch status from daemon HTTP API
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/status", info.port);
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                let devices = json["devices"].as_u64().unwrap_or(0);
+                let connected = json["connected"].as_u64().unwrap_or(0);
+                println!("  Devices discovered: {devices}");
+                println!("  Devices connected:  {connected}");
+            }
+        }
+        Err(e) => {
+            eprintln!("  (could not fetch status from daemon API: {e})");
         }
     }
 

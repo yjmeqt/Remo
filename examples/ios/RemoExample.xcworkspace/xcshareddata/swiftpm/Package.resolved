@@ -1,0 +1,15 @@
+{
+  "originHash" : "46004a6ea935a4e398d998cc9e4bb071590cdbc20396357452cb50ec1cec5b74",
+  "pins" : [
+    {
+      "identity" : "remo-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/yi-jiang-applovin/remo-spm.git",
+      "state" : {
+        "revision" : "4f1d1d5721937ddd7ec9dede1ff3a0448e4463fa",
+        "version" : "0.4.0"
+      }
+    }
+  ],
+  "version" : 3
+}

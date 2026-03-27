@@ -29,7 +29,7 @@ void remo_register_capability(const char* name,
                               remo_capability_callback callback);
 
 /// Unregister a capability by name.
-/// Returns true if it existed and was removed, false otherwise.
+/// Returns true if the capability was found and removed.
 bool remo_unregister_capability(const char* name);
 
 /// Free a Rust-allocated string.

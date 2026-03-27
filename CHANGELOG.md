@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`remo-daemon` crate**: Background daemon with ConnectionPool (auto-connect, keepalive, exponential backoff reconnection), EventBus (ring buffer + broadcast), and full HTTP/WebSocket API for device management, capability invocation, event streaming, and screenshots
+- **Daemon CLI commands**: `remo start`, `remo stop`, `remo status` for daemon lifecycle management
+- **Daemon fallback**: All existing CLI commands (`call`, `list`, `screenshot`, etc.) route through daemon HTTP API when available, falling back to direct TCP connections
+- **Capability change events**: `capabilities_changed` events emitted by the SDK when capabilities are registered or unregistered, pushed to connected clients in real time
+- **`Remo.unregister()` API**: Dynamic capability removal through the full stack — Rust FFI (`remo_unregister_capability`), Swift (`Remo.unregister(_:)`), and Objective-C (`[RMRemo unregisterCapability:]`)
+- **`remo_get_port()` FFI**: Query the actual port the server is listening on
+- **Per-view capability lifecycle**: Example app demonstrates registering capabilities in `.onAppear` and unregistering in `.onDisappear`, so capabilities reflect the active UI state
+- **Dashboard `capabilities_changed` handling**: Dashboard refreshes its capability panel when it receives a `capabilities_changed` WebSocket event
 - **Web dashboard** (`remo dashboard`): Browser-based UI with multi-device discovery, device selector, video streaming, screenshot capture, capabilities panel, and interactive terminal
 - **Video streaming**: H.264 screen capture via RPScreenRecorder + VideoToolbox encoder on iOS, fMP4 muxer + MSE playback on desktop
 - **StreamFrame wire protocol**: Type 0x02 binary frame for real-time video/audio data with flags and timestamps

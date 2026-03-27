@@ -258,3 +258,99 @@ async fn stream_receiver_broadcast_multiple_subscribers() {
     let f2 = rx2.next_frame().await.unwrap();
     assert_eq!(f1.sequence, f2.sequence);
 }
+
+#[tokio::test]
+async fn capabilities_changed_event_on_register() {
+    use remo_protocol::Message;
+    use remo_transport::Connection;
+    use serde_json::json;
+
+    let registry = CapabilityRegistry::new();
+    registry.register_sync("initial", |_| Ok(json!({"ok": true})));
+
+    let server = RemoServer::new(registry.clone(), 0);
+    let (port_tx, port_rx) = tokio::sync::oneshot::channel();
+    let shutdown = server.shutdown_handle();
+
+    tokio::spawn(async move {
+        server.run(Some(port_tx)).await.unwrap();
+    });
+
+    let port = port_rx.await.unwrap();
+    let addr = format!("127.0.0.1:{}", port).parse().unwrap();
+    let mut conn = Connection::connect(addr).await.unwrap();
+
+    // Give the server time to accept the connection and set up the event forwarder.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Register a new capability after connection is established
+    registry.register_sync("dynamic_cap", |_| Ok(json!({"dynamic": true})));
+
+    // We should receive a capabilities_changed event
+    let msg = tokio::time::timeout(Duration::from_secs(2), conn.recv())
+        .await
+        .expect("should receive event within timeout")
+        .expect("should receive message");
+
+    match msg {
+        Some(Message::Event(event)) => {
+            assert_eq!(event.kind, "capabilities_changed");
+            let payload = event.payload;
+            assert_eq!(payload["action"], "registered");
+            assert_eq!(payload["name"], "dynamic_cap");
+            let caps = payload["capabilities"].as_array().unwrap();
+            assert!(caps.iter().any(|c| c == "dynamic_cap"));
+            assert!(caps.iter().any(|c| c == "initial"));
+        }
+        other => panic!("expected Event, got {:?}", other),
+    }
+
+    shutdown.send(()).ok();
+}
+
+#[tokio::test]
+async fn capabilities_changed_event_on_unregister() {
+    use remo_protocol::Message;
+    use remo_transport::Connection;
+    use serde_json::json;
+
+    let registry = CapabilityRegistry::new();
+    registry.register_sync("to_remove", |_| Ok(json!({"ok": true})));
+
+    let server = RemoServer::new(registry.clone(), 0);
+    let (port_tx, port_rx) = tokio::sync::oneshot::channel();
+    let shutdown = server.shutdown_handle();
+
+    tokio::spawn(async move {
+        server.run(Some(port_tx)).await.unwrap();
+    });
+
+    let port = port_rx.await.unwrap();
+    let addr = format!("127.0.0.1:{}", port).parse().unwrap();
+    let mut conn = Connection::connect(addr).await.unwrap();
+
+    // Give the server time to accept the connection and set up the event forwarder.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Unregister the capability
+    registry.unregister("to_remove");
+
+    let msg = tokio::time::timeout(Duration::from_secs(2), conn.recv())
+        .await
+        .expect("should receive event within timeout")
+        .expect("should receive message");
+
+    match msg {
+        Some(Message::Event(event)) => {
+            assert_eq!(event.kind, "capabilities_changed");
+            let payload = event.payload;
+            assert_eq!(payload["action"], "unregistered");
+            assert_eq!(payload["name"], "to_remove");
+            let caps = payload["capabilities"].as_array().unwrap();
+            assert!(!caps.iter().any(|c| c == "to_remove"));
+        }
+        other => panic!("expected Event, got {:?}", other),
+    }
+
+    shutdown.send(()).ok();
+}

@@ -202,7 +202,7 @@ pub unsafe extern "C" fn remo_register_capability(
 
 /// Unregister a capability by name.
 ///
-/// Returns `true` if the capability existed and was removed, `false` otherwise.
+/// Returns `true` if the capability was found and removed, `false` otherwise.
 ///
 /// # Safety
 /// `name` must be a valid null-terminated C string.

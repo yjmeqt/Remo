@@ -105,31 +105,28 @@ func registerDetailCapabilities(item: String) {
 
 // MARK: - Remo Setup
 
-public func setupRemo(store: AppStore) {
-    func logged(
-        _ name: String,
-        handler: @escaping ([String: Any]) -> [String: Any]
-    ) {
-        Remo.register(name) { params in
-            let paramsJSON = (try? JSONSerialization.data(withJSONObject: params))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-            let result = handler(params)
-            let resultJSON = (try? JSONSerialization.data(withJSONObject: result))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-            store.log(capability: name, params: paramsJSON, result: resultJSON)
-            return result
-        }
+/// Helper that wraps a capability handler with activity logging.
+private func logged(store: AppStore, _ name: String, handler: @escaping ([String: Any]) -> [String: Any]) {
+    Remo.register(name) { params in
+        let paramsJSON = (try? JSONSerialization.data(withJSONObject: params))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let result = handler(params)
+        let resultJSON = (try? JSONSerialization.data(withJSONObject: result))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        store.log(capability: name, params: paramsJSON, result: resultJSON)
+        return result
     }
+}
 
-    // -- Existing capabilities ------------------------------------------------
-
-    logged("navigate") { params in
+/// Register global capabilities that are always available regardless of the active tab.
+public func setupRemo(store: AppStore) {
+    logged(store: store, "navigate") { params in
         let route = params["route"] as? String ?? "home"
         DispatchQueue.main.async { store.currentRoute = route }
         return ["status": "ok", "route": route]
     }
 
-    logged("state.get") { params in
+    logged(store: store, "state.get") { params in
         let key = params["key"] as? String ?? ""
         switch key {
         case "counter": return ["value": store.counter]
@@ -141,7 +138,7 @@ public func setupRemo(store: AppStore) {
         }
     }
 
-    logged("state.set") { params in
+    logged(store: store, "state.set") { params in
         let key = params["key"] as? String ?? ""
         let intValue = params["value"] as? Int
         let stringValue = params["value"] as? String
@@ -157,9 +154,7 @@ public func setupRemo(store: AppStore) {
         return ["status": "ok"]
     }
 
-    // -- UI effect capabilities -----------------------------------------------
-
-    logged("ui.toast") { params in
+    logged(store: store, "ui.toast") { params in
         let message = params["message"] as? String ?? "Hello from Remo!"
         DispatchQueue.main.async {
             withAnimation(.spring(duration: 0.4)) {
@@ -176,7 +171,7 @@ public func setupRemo(store: AppStore) {
         return ["status": "ok"]
     }
 
-    logged("ui.confetti") { _ in
+    logged(store: store, "ui.confetti") { _ in
         DispatchQueue.main.async {
             store.showConfetti = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -186,7 +181,7 @@ public func setupRemo(store: AppStore) {
         return ["status": "ok"]
     }
 
-    logged("ui.setAccentColor") { params in
+    logged(store: store, "ui.setAccentColor") { params in
         let color = params["color"] as? String ?? "blue"
         DispatchQueue.main.async {
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -195,7 +190,6 @@ public func setupRemo(store: AppStore) {
         }
         return ["status": "ok", "color": color]
     }
-
 }
 
 // MARK: - Root View
@@ -298,6 +292,16 @@ struct HomeView: View {
                 Remo.unregister("counter.increment")
             }
         }
+        .onAppear {
+            logged(store: store, "counter.increment") { params in
+                let amount = params["amount"] as? Int ?? 1
+                DispatchQueue.main.async { store.counter += amount }
+                return ["status": "ok", "amount": amount]
+            }
+        }
+        .onDisappear {
+            Remo.unregister("counter.increment")
+        }
     }
 }
 
@@ -384,6 +388,41 @@ struct ListPage: View {
                 Remo.unregister("items.remove")
                 Remo.unregister("items.clear")
             }
+        }
+        .onAppear {
+            logged(store: store, "items.add") { params in
+                let name = params["name"] as? String ?? "New Item"
+                DispatchQueue.main.async {
+                    withAnimation { store.items.append(name) }
+                }
+                return ["status": "ok", "name": name]
+            }
+
+            logged(store: store, "items.remove") { params in
+                let index = params["index"] as? Int
+                DispatchQueue.main.async {
+                    withAnimation {
+                        if let index, index >= 0, index < store.items.count {
+                            store.items.remove(at: index)
+                        } else if !store.items.isEmpty {
+                            store.items.removeLast()
+                        }
+                    }
+                }
+                return ["status": "ok"]
+            }
+
+            logged(store: store, "items.clear") { _ in
+                DispatchQueue.main.async {
+                    withAnimation { store.items.removeAll() }
+                }
+                return ["status": "ok"]
+            }
+        }
+        .onDisappear {
+            Remo.unregister("items.add")
+            Remo.unregister("items.remove")
+            Remo.unregister("items.clear")
         }
     }
 }

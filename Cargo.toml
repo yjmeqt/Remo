@@ -10,6 +10,7 @@ members = [
     "crates/remo-desktop",
     "crates/remo-cli",
     "crates/remo-bonjour",
+    "crates/remo-daemon",
 ]
 
 [workspace.lints.clippy]
@@ -81,6 +82,8 @@ base64 = "0.22"
 
 # Web server
 axum = { version = "0.8", features = ["ws"] }
+tower = { version = "0.5", features = ["util"] }
+http = "1"
 
 # Open URLs in browser
 open = "5"
@@ -97,5 +100,9 @@ remo-protocol = { path = "crates/remo-protocol" }
 remo-transport = { path = "crates/remo-transport" }
 remo-sdk = { path = "crates/remo-sdk" }
 remo-desktop = { path = "crates/remo-desktop" }
+remo-daemon = { path = "crates/remo-daemon" }
 tokio = { workspace = true }
 serde_json = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+http = { workspace = true }
