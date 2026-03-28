@@ -59,9 +59,9 @@ jobs:
 
             ### Swift Package Manager
 
-            Via [remo-spm](https://github.com/yi-jiang-applovin/remo-spm):
+            Via [remo-spm](https://github.com/yjmeqt/remo-spm):
             ```swift
-            .package(url: "https://github.com/yi-jiang-applovin/remo-spm.git", from: "${{ steps.version.outputs.version }}")
+            .package(url: "https://github.com/yjmeqt/remo-spm.git", from: "${{ steps.version.outputs.version }}")
             ```
 
             ### Checksums
@@ -81,10 +81,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          RELEASE_URL="https://github.com/yi-jiang-applovin/Remo/releases/download/${TAG}/RemoSDK.xcframework.zip"
+          RELEASE_URL="https://github.com/yjmeqt/Remo/releases/download/${TAG}/RemoSDK.xcframework.zip"
 
           # Clone remo-spm
-          git clone "https://x-access-token:${SPM_TOKEN}@github.com/yi-jiang-applovin/remo-spm.git" /tmp/remo-spm
+          git clone "https://x-access-token:${SPM_TOKEN}@github.com/yjmeqt/remo-spm.git" /tmp/remo-spm
           cd /tmp/remo-spm
 
           # Sync Package.swift from source, replacing local path with remote URL + checksum

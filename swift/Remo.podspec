@@ -7,12 +7,12 @@ Pod::Spec.new do |s|
     invoke them from macOS via the remo CLI or any AI agent.
     Debug-only — compiles to no-ops in Release builds.
   DESC
-  s.homepage     = 'https://github.com/yi-jiang-applovin/Remo'
+  s.homepage     = 'https://github.com/yjmeqt/Remo'
   s.license      = { :type => 'MIT', :file => 'LICENSE' }
   s.author       = { 'Yi Jiang' => 'yi.jiang@applovin.com' }
   s.platform     = :ios, '13.0'
   s.source       = {
-    :http => "https://github.com/yi-jiang-applovin/Remo/releases/download/v#{s.version}/RemoSDK.xcframework.zip"
+    :http => "https://github.com/yjmeqt/Remo/releases/download/v#{s.version}/RemoSDK.xcframework.zip"
   }
   s.preserve_paths = 'RemoSDK.xcframework'
 

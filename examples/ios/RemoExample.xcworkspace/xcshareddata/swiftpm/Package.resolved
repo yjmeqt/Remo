@@ -4,7 +4,7 @@
     {
       "identity" : "remo-spm",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/yi-jiang-applovin/remo-spm.git",
+      "location" : "https://github.com/yjmeqt/remo-spm.git",
       "state" : {
         "revision" : "4f1d1d5721937ddd7ec9dede1ff3a0448e4463fa",
         "version" : "0.4.0"
