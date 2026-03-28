@@ -10,9 +10,9 @@ The result is a closed loop: **write code → build → call capabilities → in
 
 ## Demo
 
-Watch the full demo video here:
+**[Interactive showcase →](https://yjmeqt.github.io/Remo/)** Watch Claude Code autonomously verify an iOS app through Remo.
 
-[remo_demo.mov](https://github.com/yjmeqt/Remo/releases/download/v0.3.0-demo/remo_demo.mov)
+Or watch the raw demo video: [remo_demo.mov](https://github.com/yjmeqt/Remo/releases/download/v0.3.0-demo/remo_demo.mov)
 
 ```
 # Agent writes code, triggers a build, then verifies via Remo:

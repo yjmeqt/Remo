@@ -71,6 +71,17 @@ The SDK is `#if DEBUG` only — it does not ship in release builds.
 
 Workspace + SPM package architecture: the Xcode project (`RemoExample/`) is a thin shell; all feature code lives in `RemoExamplePackage/`. See `swift/CLAUDE.md` for Swift/SwiftUI conventions (MV pattern, no ViewModels, Swift Testing, @Observable).
 
+## Website (Showcase)
+
+The `website/` directory contains the interactive showcase site (React + Vite + Tailwind CSS), deployed to GitHub Pages at `yjmeqt.github.io/Remo/`.
+
+```bash
+cd website && npm install && npm run dev   # Dev server at localhost:5173
+cd website && npm run build                # Production build → dist/
+```
+
+The demo hero plays a real screen recording (`website/public/demo.mp4`) synced to a terminal animation. To re-record the demo video, see `scripts/record-demo.sh`.
+
 ## Code Style
 
 - **Rust**: `rustfmt.toml` enforces max_width=100. Workspace clippy lints are in `Cargo.toml` (e.g., `undocumented_unsafe_blocks`, `await_holding_lock`, `large_futures`).
