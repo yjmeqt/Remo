@@ -1,73 +1,54 @@
-# React + TypeScript + Vite
+# Remo Showcase Website
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Interactive showcase demonstrating how AI agents use Remo to autonomously verify iOS apps. Built with React, TypeScript, Vite, and Tailwind CSS.
 
-Currently, two official plugins are available:
+**Live:** [yjmeqt.github.io/Remo](https://yjmeqt.github.io/Remo/)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Development
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd website
+npm install
+npm run dev      # http://localhost:5173/Remo/
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Build & Preview
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+npm run build    # outputs to dist/
+npm run preview  # preview production build locally
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Demo Video
+
+The hero section plays a real screen recording of RemoExample being driven by Remo capabilities. To re-record:
+
+```bash
+# From repo root — requires a booted iOS Simulator with RemoExample
+./scripts/record-demo.sh
+
+# Then copy artifacts
+cp /tmp/remo-demo/demo.mp4 website/public/demo.mp4
+# Update website/src/components/DemoHero/timeline.ts with new elapsed_s values
+```
+
+See `scripts/record-demo.sh` for details on the recording process.
+
+## Deployment
+
+Deployed automatically to GitHub Pages via `.github/workflows/deploy-website.yml` on push to `main` when `website/` changes. Can also be triggered manually from the Actions tab.
+
+## Architecture
+
+```
+src/
+├── components/
+│   └── DemoHero/
+│       ├── DemoHero.tsx       — two-column layout (iPhone + terminal)
+│       ├── IPhoneFrame.tsx    — iPhone mockup with synced video playback
+│       ├── AgentTerminal.tsx  — animated terminal showing agent commands
+│       ├── timeline.ts        — demo steps with timestamps from recording
+│       └── useTimeline.ts     — animation driver (requestAnimationFrame)
+├── App.tsx
+└── main.tsx
 ```
