@@ -46,7 +46,19 @@ const FEATURES = [
   },
 ];
 
-// TODO: add code example or mini-demo for each feature card on hover/click
+// TODO: replace flat card grid with premium product-style showcase
+// Each capability gets a full-width section with:
+//   - 3D perspective / parallax demo visual (tilt-on-hover, depth layers)
+//   - Scroll-triggered entrance animations (fade + scale + rotate)
+//   - Interactive demo: e.g. Screenshot shows a live before/after slider,
+//     Video Streaming shows a looping H.264 clip with playback controls,
+//     View Tree shows an expandable JSON tree with syntax highlighting,
+//     Capability Invocation shows a terminal typing animation with response,
+//     Discovery shows an animated device radar/scan visualization,
+//     Dynamic Registration shows a timeline of register/unregister lifecycle
+//   - Alternating left/right layout (visual | text, text | visual)
+//   - Glassmorphism cards with subtle gradient borders
+// Reference: Apple product pages, Linear.app features, Vercel homepage
 export function FeaturesSection() {
   return (
     <section className="py-20 px-6 border-t border-zinc-800">
