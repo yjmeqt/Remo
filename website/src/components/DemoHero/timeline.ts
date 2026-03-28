@@ -11,161 +11,252 @@ export interface DemoStep {
   videoTime?: number;
 }
 
+// =============================================================================
+// Demo Timeline
+//
+// Two phases:
+//   1. Code phase (0–8s): terminal-only, agent explores code and registers
+//      capabilities. videoTime stays at 0 (app idle).
+//   2. Verify phase (9s+): agent invokes capabilities, video syncs to real
+//      recording timestamps.
+//
+// After running scripts/record-demo.sh, update the verify phase videoTime
+// values with the elapsed_s from demo-timestamps.json.
+// =============================================================================
+
 export const DEMO_STEPS: DemoStep[] = [
+  // === CODE PHASE (terminal only, no video movement) ===
   {
     time: 0,
-    terminal: { type: "prompt", text: '$ claude "test the counter feature"' },
+    terminal: {
+      type: "prompt",
+      text: '$ claude "verify the RemoExample app works correctly"',
+    },
   },
   {
     time: 2,
     terminal: {
       type: "claude",
-      text: "I'll test the counter. Let me discover the device first.",
+      text: "Let me explore the project structure...",
     },
   },
   {
-    time: 4,
+    time: 3.5,
+    terminal: {
+      type: "command",
+      text: "❯ Read examples/ios/.../ContentView.swift",
+    },
+  },
+  {
+    time: 5,
+    terminal: {
+      type: "claude",
+      text: "I see counter, items, and UI effect features. I'll register capabilities to verify each one.",
+    },
+  },
+  {
+    time: 6.5,
+    terminal: {
+      type: "command",
+      text: '❯ Edit ContentView.swift — added Remo.register("counter.increment", ...)',
+    },
+  },
+  {
+    time: 7.5,
+    terminal: {
+      type: "result",
+      text: "✓ Capabilities registered",
+    },
+  },
+  {
+    time: 8.5,
+    terminal: {
+      type: "claude",
+      text: "Capabilities registered. Now let me verify the app.",
+    },
+  },
+
+  // === VERIFY PHASE (terminal + video) ===
+  // videoTime values below are placeholders. Update with real elapsed_s
+  // from demo-timestamps.json after running scripts/record-demo.sh.
+
+  // -- Discovery --
+  {
+    time: 10,
     terminal: { type: "command", text: "❯ remo devices" },
   },
   {
-    time: 5.5,
+    time: 11,
     terminal: { type: "result", text: "✓ iPhone 17 Pro (Bonjour)" },
   },
   {
-    time: 7,
+    time: 12,
     terminal: {
       type: "claude",
-      text: "Found the device. Listing capabilities...",
+      text: "Device found. Testing the counter...",
     },
   },
-  {
-    time: 9,
-    terminal: { type: "command", text: "❯ remo capabilities" },
-  },
-  {
-    time: 10.5,
-    terminal: {
-      type: "result",
-      text: "counter: increment, decrement, get_count",
-    },
-  },
-  {
-    time: 11.5,
-    terminal: {
-      type: "result",
-      text: "items: add_item, delete_item, list_items",
-    },
-  },
+
+  // -- Counter (increment x3) --
   {
     time: 13,
-    terminal: { type: "claude", text: "Invoking increment..." },
+    terminal: {
+      type: "command",
+      text: "❯ remo call counter.increment '{\"amount\":1}'",
+    },
+    videoTime: 2.5,
+  },
+  {
+    time: 14,
+    terminal: { type: "result", text: '✓ { "amount": 1 }' },
   },
   {
     time: 14.5,
-    terminal: { type: "command", text: '❯ remo invoke "increment"' },
-    videoTime: 3,
+    terminal: {
+      type: "command",
+      text: "❯ remo call counter.increment '{\"amount\":1}'",
+    },
+    videoTime: 3.5,
+  },
+  {
+    time: 15.5,
+    terminal: { type: "result", text: '✓ { "amount": 2 }' },
   },
   {
     time: 16,
-    terminal: { type: "result", text: '✓ { "count": 1 }' },
+    terminal: {
+      type: "command",
+      text: "❯ remo call counter.increment '{\"amount\":1}'",
+    },
+    videoTime: 4.5,
   },
   {
-    time: 17.5,
+    time: 17,
+    terminal: { type: "result", text: '✓ { "amount": 3 }' },
+  },
+  {
+    time: 18,
     terminal: {
       type: "claude",
-      text: "Let me increment a few more times to verify...",
+      text: "Counter works. Testing UI effects...",
     },
   },
+
+  // -- Toast --
   {
     time: 19,
-    terminal: { type: "command", text: '❯ remo invoke "increment"' },
-    videoTime: 5,
+    terminal: {
+      type: "command",
+      text: '❯ remo call ui.toast \'{"message":"Features verified ✓"}\'',
+    },
+    videoTime: 5.5,
   },
   {
     time: 20,
-    terminal: { type: "result", text: '✓ { "count": 2 }' },
+    terminal: { type: "result", text: '✓ { "status": "ok" }' },
+  },
+
+  // -- Accent Color --
+  {
+    time: 21.5,
+    terminal: {
+      type: "command",
+      text: '❯ remo call ui.setAccentColor \'{"color":"purple"}\'',
+    },
+    videoTime: 7.5,
   },
   {
-    time: 21,
-    terminal: { type: "command", text: '❯ remo invoke "increment"' },
-    videoTime: 7,
+    time: 22.5,
+    terminal: { type: "result", text: '✓ { "color": "purple" }' },
   },
-  {
-    time: 22,
-    terminal: { type: "result", text: '✓ { "count": 3 }' },
-  },
+
+  // -- Confetti --
   {
     time: 23.5,
+    terminal: { type: "command", text: "❯ remo call ui.confetti '{}'" },
+    videoTime: 8.5,
+  },
+  {
+    time: 24.5,
+    terminal: { type: "result", text: '✓ { "status": "ok" }' },
+  },
+  {
+    time: 26,
     terminal: {
       type: "claude",
-      text: "Let me take a screenshot to verify the UI.",
+      text: "UI effects working. Checking the items page...",
     },
   },
-  {
-    time: 25,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-    videoTime: 8,
-  },
+
+  // -- Navigation --
   {
     time: 27,
+    terminal: {
+      type: "command",
+      text: '❯ remo call navigate \'{"route":"items"}\'',
+    },
+    videoTime: 11,
+  },
+  {
+    time: 28,
+    terminal: { type: "result", text: '✓ { "status": "ok" }' },
+  },
+
+  // -- Items --
+  {
+    time: 29,
+    terminal: {
+      type: "command",
+      text: '❯ remo call items.add \'{"name":"Test Item 1"}\'',
+    },
+    videoTime: 12.5,
+  },
+  {
+    time: 30,
+    terminal: { type: "result", text: '✓ { "status": "ok" }' },
+  },
+  {
+    time: 30.5,
+    terminal: {
+      type: "command",
+      text: '❯ remo call items.add \'{"name":"Test Item 2"}\'',
+    },
+    videoTime: 13.5,
+  },
+  {
+    time: 31.5,
+    terminal: { type: "result", text: '✓ { "status": "ok" }' },
+  },
+  {
+    time: 32.5,
+    terminal: {
+      type: "claude",
+      text: "Items added. Capturing a screenshot to confirm...",
+    },
+  },
+
+  // -- Screenshot --
+  {
+    time: 34,
+    terminal: { type: "command", text: "❯ remo screenshot" },
+    videoTime: 14.5,
+  },
+  {
+    time: 35.5,
     terminal: {
       type: "result",
       text: "✓ captured 1170×2532 → screenshot_001.png",
     },
   },
+
+  // -- Summary --
   {
-    time: 28.5,
+    time: 37,
     terminal: {
       type: "claude",
-      text: "Counter shows 3. Let me check the view tree for the label.",
-    },
-  },
-  {
-    time: 30,
-    terminal: { type: "command", text: "❯ remo view-tree" },
-  },
-  {
-    time: 31.5,
-    terminal: {
-      type: "result",
-      text: '✓ UILabel { text: "3", frame: (187, 400, 40, 48) }',
-    },
-  },
-  {
-    time: 33,
-    terminal: {
-      type: "claude",
-      text: "Counter is working correctly. Now let me test reset...",
-    },
-  },
-  {
-    time: 35,
-    terminal: { type: "command", text: '❯ remo invoke "reset"' },
-    videoTime: 11,
-  },
-  {
-    time: 36.5,
-    terminal: { type: "result", text: '✓ { "count": 0 }' },
-  },
-  {
-    time: 38,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-    videoTime: 12,
-  },
-  {
-    time: 39.5,
-    terminal: {
-      type: "result",
-      text: "✓ captured 1170×2532 → screenshot_002.png",
-    },
-  },
-  {
-    time: 41,
-    terminal: {
-      type: "claude",
-      text: "All tests pass. Counter increments correctly and reset works.",
+      text: "All features verified successfully. Counter, UI effects, navigation, and items all working correctly.",
     },
   },
 ];
 
-export const DEMO_TOTAL_DURATION = 44; // seconds before loop restarts
+export const DEMO_TOTAL_DURATION = 40; // seconds before loop restarts
