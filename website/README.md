@@ -43,12 +43,25 @@ Deployed automatically to GitHub Pages via `.github/workflows/deploy-website.yml
 ```
 src/
 ├── components/
-│   └── DemoHero/
-│       ├── DemoHero.tsx       — two-column layout (iPhone + terminal)
-│       ├── IPhoneFrame.tsx    — iPhone mockup with synced video playback
-│       ├── AgentTerminal.tsx  — animated terminal showing agent commands
-│       ├── timeline.ts        — demo steps with timestamps from recording
-│       └── useTimeline.ts     — animation driver (requestAnimationFrame)
+│   ├── DemoHero/
+│   │   ├── DemoHero.tsx       — two-column layout (iPhone + terminal)
+│   │   ├── IPhoneFrame.tsx    — iPhone mockup with synced video playback
+│   │   ├── AgentTerminal.tsx  — animated terminal showing agent commands
+│   │   ├── timeline.ts        — demo steps with timestamps from recording
+│   │   └── useTimeline.ts     — animation driver (requestAnimationFrame)
+│   ├── FeatureShowcase/
+│   │   ├── FeatureShowcase.tsx            — renders all 6 showcase sections
+│   │   ├── shared.tsx                     — design system (GlassPanel, AmbientLight, animations)
+│   │   ├── CapabilitySection.tsx          — Register → Invoke → Response pipeline
+│   │   ├── ViewTreeSection.tsx            — phone wireframe → JSON with hover linking
+│   │   ├── PhoneWireframe.tsx             — interactive phone wireframe for View Tree
+│   │   ├── ScreenshotSection.tsx          — shutter flash + capture carousel
+│   │   ├── VideoStreamSection.tsx         — REC badge + waveform timeline
+│   │   ├── DeviceDiscoverySection.tsx     — device card grid with USB/Bonjour tags
+│   │   └── DynamicRegistrationSection.tsx — dual-screen capability diff
+│   ├── Navbar.tsx
+│   ├── VisionSection.tsx
+│   └── Footer.tsx
 ├── App.tsx
 └── main.tsx
 ```
