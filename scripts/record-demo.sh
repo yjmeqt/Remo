@@ -215,7 +215,7 @@ demo_step() {
 
     echo -e "  ${GREEN}[$elapsed s]${RESET} $capability $params"
 
-    # Append JSON entry (trailing comma removed later)
+    # Append JSON entry (last entry added manually without trailing comma)
     cat >> "$TIMESTAMPS_FILE" <<ENTRY
   { "capability": "$capability", "params": $params, "elapsed_s": $elapsed },
 ENTRY
