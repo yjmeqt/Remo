@@ -5,7 +5,7 @@ interface ScreenshotGalleryProps {
   isResetting: boolean;
 }
 
-const SCREENSHOT_LABELS = ["screenshot_001", "screenshot_002", "screenshot_003"];
+const SCREENSHOT_LABELS = ["screenshot_001", "screenshot_002"];
 
 export function ScreenshotGallery({
   screenshots,
@@ -16,7 +16,7 @@ export function ScreenshotGallery({
       <div className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">
         Captured
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <AnimatePresence mode="popLayout">
           {!isResetting &&
             screenshots.map((idx) => (
@@ -35,7 +35,7 @@ export function ScreenshotGallery({
               </motion.div>
             ))}
         </AnimatePresence>
-        {Array.from({ length: Math.max(0, 3 - screenshots.length) }).map(
+        {Array.from({ length: Math.max(0, 2 - screenshots.length) }).map(
           (_, i) => (
             <div
               key={`empty-${i}`}
