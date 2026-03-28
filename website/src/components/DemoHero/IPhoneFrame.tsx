@@ -24,6 +24,8 @@ export function IPhoneFrame({ videoTime }: IPhoneFrameProps) {
       >
         {/* Screen content sits behind the frame bezel */}
         <div className="absolute left-[5.3%] right-[5.3%] top-[2.5%] bottom-[2.5%] rounded-[32px] overflow-hidden bg-black">
+          {/* TODO: preload poster frame to avoid blank flash before video loads */}
+          {/* TODO: use base-path-aware src (currently hardcoded /demo.mp4) */}
           <video
             ref={videoRef}
             className="w-full h-full object-cover"

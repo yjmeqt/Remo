@@ -15,6 +15,7 @@ export function Navbar() {
         >
           GitHub
         </a>
+        {/* TODO: link to README quick-start section or docs site */}
         <Button size="sm">Get Started</Button>
       </div>
     </nav>

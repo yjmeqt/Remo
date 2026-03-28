@@ -12,6 +12,8 @@ export interface TimelineState {
   isResetting: boolean;
 }
 
+// TODO: pause animation when tab is not visible (Page Visibility API)
+// TODO: pause on hover so users can read terminal output
 export function useTimeline(): TimelineState {
   const [elapsed, setElapsed] = useState(0);
   const [isResetting, setIsResetting] = useState(false);

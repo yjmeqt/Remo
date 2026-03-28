@@ -46,6 +46,7 @@ const FEATURES = [
   },
 ];
 
+// TODO: add code example or mini-demo for each feature card on hover/click
 export function FeaturesSection() {
   return (
     <section className="py-20 px-6 border-t border-zinc-800">

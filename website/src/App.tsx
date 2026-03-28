@@ -4,6 +4,9 @@ import { VisionSection } from "@/components/VisionSection";
 import { FeaturesSection } from "@/components/FeaturesSection";
 import { Footer } from "@/components/Footer";
 
+// TODO: add Quick Start section with install + code snippet
+// TODO: add comparison table (Remo vs Appium vs XCTest)
+// TODO: add SEO meta tags (og:image, description, etc.)
 function App() {
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-50 flex flex-col">

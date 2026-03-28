@@ -21,6 +21,7 @@ export function DemoHero() {
         </p>
       </div>
 
+      {/* TODO: responsive layout — stack vertically on mobile (currently desktop-only) */}
       {/* Two-column demo — fixed height from iPhone (300 * 920/450 ≈ 613px) */}
       <div className="flex gap-4 px-5 pb-8 max-w-5xl mx-auto h-[613px]">
         {/* Left: iPhone */}
