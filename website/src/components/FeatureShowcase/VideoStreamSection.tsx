@@ -231,7 +231,7 @@ function TimelineBar() {
         className="flex justify-between mt-1.5"
         style={{
           fontSize: 7,
-          color: "#3f3f46",
+          color: "#27272a",
           fontFamily: "'SF Mono','Fira Code',monospace",
         }}
       >
