@@ -25,11 +25,10 @@ export function IPhoneFrame({ videoTime }: IPhoneFrameProps) {
         {/* Screen content sits behind the frame bezel */}
         <div className="absolute left-[5.3%] right-[5.3%] top-[2.5%] bottom-[2.5%] rounded-[32px] overflow-hidden bg-black">
           {/* TODO: preload poster frame to avoid blank flash before video loads */}
-          {/* TODO: use base-path-aware src (currently hardcoded /demo.mp4) */}
           <video
             ref={videoRef}
             className="w-full h-full object-cover"
-            src="/demo.mp4"
+            src={`${import.meta.env.BASE_URL}demo.mp4`}
             muted
             playsInline
             style={{ opacity: showVideo ? 1 : 0 }}
@@ -38,7 +37,7 @@ export function IPhoneFrame({ videoTime }: IPhoneFrameProps) {
 
         {/* Figma iPhone 17 Pro frame overlay */}
         <img
-          src="/iphone-frame.png"
+          src={`${import.meta.env.BASE_URL}iphone-frame.png`}
           alt=""
           className="absolute inset-0 w-full h-full pointer-events-none"
           draggable={false}
