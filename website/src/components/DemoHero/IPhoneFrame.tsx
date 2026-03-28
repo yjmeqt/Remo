@@ -18,7 +18,7 @@ export function IPhoneFrame({ videoTime }: IPhoneFrameProps) {
       {/* iPhone frame from Figma — image overlays the screen content */}
       <div className="relative w-[225px]" style={{ aspectRatio: "450/920" }}>
         {/* Screen content sits behind the frame bezel */}
-        <div className="absolute inset-[5.3%] rounded-[32px] overflow-hidden bg-black">
+        <div className="absolute left-[5.3%] right-[5.3%] top-[2.5%] bottom-[2.5%] rounded-[24px] overflow-hidden bg-black">
           <video
             ref={videoRef}
             className="w-full h-full object-cover hidden"
