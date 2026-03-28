@@ -8,9 +8,7 @@ export interface TerminalLine {
 export interface DemoStep {
   time: number;
   terminal: TerminalLine;
-  treeHighlight?: string;
   videoTime?: number;
-  screenshot?: boolean;
 }
 
 export const DEMO_STEPS: DemoStep[] = [
@@ -28,7 +26,6 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     time: 4,
     terminal: { type: "command", text: "❯ remo devices" },
-    treeHighlight: "device",
   },
   {
     time: 5.5,
@@ -66,7 +63,6 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     time: 14.5,
     terminal: { type: "command", text: '❯ remo invoke "increment"' },
-    treeHighlight: "counter.increment",
     videoTime: 3,
   },
   {
@@ -83,7 +79,6 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     time: 19,
     terminal: { type: "command", text: '❯ remo invoke "increment"' },
-    treeHighlight: "counter.increment",
     videoTime: 5,
   },
   {
@@ -93,7 +88,6 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     time: 21,
     terminal: { type: "command", text: '❯ remo invoke "increment"' },
-    treeHighlight: "counter.increment",
     videoTime: 7,
   },
   {
@@ -110,9 +104,7 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     time: 25,
     terminal: { type: "command", text: "❯ remo screenshot" },
-    treeHighlight: "device.screenshot",
     videoTime: 8,
-    screenshot: true,
   },
   {
     time: 27,
@@ -131,7 +123,6 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     time: 30,
     terminal: { type: "command", text: "❯ remo view-tree" },
-    treeHighlight: "device.view_tree",
   },
   {
     time: 31.5,
@@ -150,7 +141,6 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     time: 35,
     terminal: { type: "command", text: '❯ remo invoke "reset"' },
-    treeHighlight: "settings.reset",
     videoTime: 11,
   },
   {
@@ -160,9 +150,7 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     time: 38,
     terminal: { type: "command", text: "❯ remo screenshot" },
-    treeHighlight: "device.screenshot",
     videoTime: 12,
-    screenshot: true,
   },
   {
     time: 39.5,

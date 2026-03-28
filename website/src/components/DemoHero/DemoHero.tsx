@@ -1,14 +1,10 @@
 import { useTimeline } from "./useTimeline";
 import { IPhoneFrame } from "./IPhoneFrame";
-import { CapabilityTree } from "./CapabilityTree";
 import { AgentTerminal } from "./AgentTerminal";
-import { ScreenshotGallery } from "./ScreenshotGallery";
 
 export function DemoHero() {
   const {
     visibleSteps,
-    activeHighlight,
-    screenshots,
     currentVideoTime,
     isResetting,
   } = useTimeline();
@@ -25,27 +21,15 @@ export function DemoHero() {
         </p>
       </div>
 
-      {/* Three-column demo */}
-      <div className="flex gap-4 px-5 pb-8 max-w-7xl mx-auto items-stretch">
-        {/* Left: iPhone + Screenshots */}
-        <div className="flex-none w-[300px] flex flex-col gap-3">
+      {/* Two-column demo — fixed height from iPhone (300 * 920/450 ≈ 613px) */}
+      <div className="flex gap-4 px-5 pb-8 max-w-5xl mx-auto h-[613px]">
+        {/* Left: iPhone */}
+        <div className="flex-none h-full">
           <IPhoneFrame videoTime={currentVideoTime} />
-          <div className="text-center text-violet-400 text-[10px]">
-            ↓ screenshots land here ↓
-          </div>
-          <ScreenshotGallery
-            screenshots={screenshots}
-            isResetting={isResetting}
-          />
         </div>
 
-        {/* Center: Capability Tree */}
-        <div className="flex-none w-[220px]">
-          <CapabilityTree activeHighlight={activeHighlight} />
-        </div>
-
-        {/* Right: Agent Terminal */}
-        <div className="flex-1 min-w-0">
+        {/* Right: Agent Terminal — fixed height, scrolls internally */}
+        <div className="flex-1 min-w-0 h-full">
           <AgentTerminal
             visibleSteps={visibleSteps}
             isResetting={isResetting}

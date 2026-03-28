@@ -3,8 +3,6 @@ import { DEMO_STEPS, DEMO_TOTAL_DURATION } from "./timeline";
 
 export interface TimelineState {
   visibleSteps: typeof DEMO_STEPS;
-  activeHighlight: string | null;
-  screenshots: number[];
   currentVideoTime: number;
   isResetting: boolean;
 }
@@ -47,19 +45,6 @@ export function useTimeline(): TimelineState {
 
   const visibleSteps = DEMO_STEPS.filter((step) => step.time <= elapsed);
 
-  const lastHighlightStep = [...visibleSteps]
-    .reverse()
-    .find((s) => s.treeHighlight);
-  const activeHighlight = lastHighlightStep?.treeHighlight ?? null;
-  const highlightAge = lastHighlightStep
-    ? elapsed - lastHighlightStep.time
-    : Infinity;
-  const displayHighlight = highlightAge < 2.5 ? activeHighlight : null;
-
-  const screenshots = visibleSteps
-    .filter((s) => s.screenshot)
-    .map((_, i) => i);
-
   const lastVideoStep = [...visibleSteps]
     .reverse()
     .find((s) => s.videoTime !== undefined);
@@ -67,8 +52,6 @@ export function useTimeline(): TimelineState {
 
   return {
     visibleSteps,
-    activeHighlight: displayHighlight,
-    screenshots,
     currentVideoTime,
     isResetting,
   };
