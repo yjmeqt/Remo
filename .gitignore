@@ -26,3 +26,4 @@ swift/RemoSDK.xcframework/
 
 # OS
 .DS_Store
+.superpowers/
