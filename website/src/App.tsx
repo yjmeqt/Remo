@@ -1,7 +1,7 @@
 import { Navbar } from "@/components/Navbar";
 import { DemoHero } from "@/components/DemoHero/DemoHero";
 import { VisionSection } from "@/components/VisionSection";
-import { FeaturesSection } from "@/components/FeaturesSection";
+import { FeatureShowcase } from "@/components/FeatureShowcase/FeatureShowcase";
 import { Footer } from "@/components/Footer";
 
 // TODO: add Quick Start section with install + code snippet
@@ -14,7 +14,7 @@ function App() {
       <main className="flex-1">
         <DemoHero />
         <VisionSection />
-        <FeaturesSection />
+        <FeatureShowcase />
       </main>
       <Footer />
     </div>
