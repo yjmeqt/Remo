@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { DEMO_STEPS, DEMO_TOTAL_DURATION } from "./timeline";
+import {
+  DEMO_STEPS,
+  DEMO_TOTAL_DURATION,
+  VIDEO_PHASE_START,
+  VIDEO_OFFSET,
+} from "./timeline";
 
 export interface TimelineState {
   visibleSteps: typeof DEMO_STEPS;
@@ -45,10 +50,13 @@ export function useTimeline(): TimelineState {
 
   const visibleSteps = DEMO_STEPS.filter((step) => step.time <= elapsed);
 
-  const lastVideoStep = [...visibleSteps]
-    .reverse()
-    .find((s) => s.videoTime !== undefined);
-  const currentVideoTime = lastVideoStep?.videoTime ?? 0;
+  // Video is hidden (videoTime = -1) until VIDEO_PHASE_START, and during reset.
+  // Once active, it plays continuously with VIDEO_OFFSET to skip the mirror
+  // init idle period so the video starts right when capabilities fire.
+  const currentVideoTime =
+    elapsed >= VIDEO_PHASE_START && !isResetting
+      ? elapsed - VIDEO_PHASE_START + VIDEO_OFFSET
+      : -1;
 
   return {
     visibleSteps,

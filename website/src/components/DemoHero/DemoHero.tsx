@@ -28,8 +28,8 @@ export function DemoHero() {
           <IPhoneFrame videoTime={currentVideoTime} />
         </div>
 
-        {/* Right: Agent Terminal — fixed height, scrolls internally */}
-        <div className="flex-1 min-w-0 h-full">
+        {/* Right: Agent Terminal — aligned with iPhone screen area (2.5% top/bottom) */}
+        <div className="flex-1 min-w-0 mt-[15px] h-[582px]">
           <AgentTerminal
             visibleSteps={visibleSteps}
             isResetting={isResetting}

@@ -9,9 +9,11 @@ export function IPhoneFrame({ videoTime }: IPhoneFrameProps) {
 
   useEffect(() => {
     if (videoRef.current && videoRef.current.readyState >= 2) {
-      videoRef.current.currentTime = videoTime;
+      videoRef.current.currentTime = Math.max(0, videoTime);
     }
   }, [videoTime]);
+
+  const showVideo = videoTime >= 0;
 
   return (
     <div className="flex flex-col items-center">
@@ -28,6 +30,7 @@ export function IPhoneFrame({ videoTime }: IPhoneFrameProps) {
             src="/demo.mp4"
             muted
             playsInline
+            style={{ opacity: showVideo ? 1 : 0 }}
           />
         </div>
 

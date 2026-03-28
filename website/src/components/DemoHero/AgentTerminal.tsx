@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { DemoStep } from "./timeline";
@@ -43,18 +44,29 @@ export function AgentTerminal({
   visibleSteps,
   isResetting,
 }: AgentTerminalProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [visibleSteps.length]);
+
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden min-h-full flex flex-col">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col">
       {/* Title bar */}
-      <div className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900/80 border-b border-zinc-800">
+      <div className="flex-none flex items-center gap-1.5 px-3 py-2 bg-zinc-900/80 border-b border-zinc-800">
         <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
         <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
         <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
         <span className="text-[11px] text-zinc-500 ml-2">Claude Code</span>
       </div>
 
-      {/* Terminal content */}
-      <div className="flex-1 p-4 font-mono text-[11px] leading-relaxed overflow-y-auto">
+      {/* Terminal content — min-h-0 enables flex child overflow scrolling */}
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 p-4 font-mono text-[11px] leading-relaxed overflow-y-auto"
+      >
         <motion.div
           animate={{ opacity: isResetting ? 0 : 1 }}
           transition={{ duration: 0.5 }}

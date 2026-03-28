@@ -34,16 +34,16 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-MIRROR_PID=""
+RECORD_PID=""
 APP_LAUNCHED=false
 
 cleanup() {
     echo ""
     echo -e "${CYAN}--- Cleanup ---${RESET}"
-    if [ -n "$MIRROR_PID" ] && kill -0 "$MIRROR_PID" 2>/dev/null; then
-        echo "Stopping mirror recording (pid=$MIRROR_PID)..."
-        kill "$MIRROR_PID" 2>/dev/null || true
-        wait "$MIRROR_PID" 2>/dev/null || true
+    if [ -n "$RECORD_PID" ] && kill -0 "$RECORD_PID" 2>/dev/null; then
+        echo "Stopping screen recording (pid=$RECORD_PID)..."
+        kill -INT "$RECORD_PID" 2>/dev/null || true
+        wait "$RECORD_PID" 2>/dev/null || true
     fi
     if [ "$APP_LAUNCHED" = true ] && [ -n "${DEVICE_UUID:-}" ]; then
         echo "Terminating app..."
@@ -132,10 +132,13 @@ fi
 
 log "Phase 2: Discover Remo Port"
 
-ADDR=""
+ADDR="${ADDR:-}"
 
+# Skip discovery if ADDR was provided via environment
+if [ -n "$ADDR" ]; then
+    echo "  Using provided ADDR=$ADDR"
 # If we launched the app, find port via lsof
-if [ -n "${APP_PID:-}" ]; then
+elif [ -n "${APP_PID:-}" ]; then
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
         echo "  Attempt $attempt/10 (lsof)..."
         sleep 2
@@ -190,11 +193,17 @@ fi
 mkdir -p "$ARTIFACTS_DIR"
 TIMESTAMPS_FILE="$ARTIFACTS_DIR/demo-timestamps.json"
 
-log "Starting mirror recording..."
-"$REMO_BIN" mirror -a "$ADDR" --save "$ARTIFACTS_DIR/demo.mp4" --fps 30 &
-MIRROR_PID=$!
-sleep 2
-echo "  Recording to $ARTIFACTS_DIR/demo.mp4 (pid=$MIRROR_PID)"
+# NOTE: We use simctl recordVideo instead of `remo mirror --save` because
+# the remo mirror MP4 muxer uses a hardcoded frame duration (3000 in 90kHz
+# timescale = 33.3ms per frame) regardless of actual frame arrival intervals.
+# This causes idle periods to be compressed — a 17s real recording becomes
+# ~10s of video. simctl recordVideo maintains proper wall-clock timing.
+# See: https://github.com/yjmeqt/Remo/issues/18 (remo mirror MP4 timing)
+log "Starting screen recording..."
+xcrun simctl io "$DEVICE_UUID" recordVideo --codec=h264 --force "$ARTIFACTS_DIR/demo.mp4" &
+RECORD_PID=$!
+sleep 1
+echo "  Recording to $ARTIFACTS_DIR/demo.mp4 (pid=$RECORD_PID)"
 
 # Mark time zero — all elapsed_s values are relative to this
 EPOCH=$(now_s)
@@ -208,8 +217,7 @@ demo_step() {
     local params="${2:-\{\}}"
     local sleep_after="${3:-0.5}"
 
-    local result
-    result=$(remo_call "$capability" "$params")
+    remo_call "$capability" "$params" >/dev/null
     local elapsed
     elapsed=$(perl -e "printf '%.2f', $(now_s) - $EPOCH")
 
@@ -223,52 +231,73 @@ ENTRY
     sleep "$sleep_after"
 }
 
+# Helper: take a screenshot and log timestamp
+demo_screenshot() {
+    local name="${1:-screenshot}"
+    "$REMO_BIN" screenshot -a "$ADDR" -o "$ARTIFACTS_DIR/${name}.jpg" --format jpeg --quality 0.8 2>/dev/null || true
+    local elapsed
+    elapsed=$(perl -e "printf '%.2f', $(now_s) - $EPOCH")
+    echo -e "  ${GREEN}[$elapsed s]${RESET} screenshot → ${name}.jpg"
+    cat >> "$TIMESTAMPS_FILE" <<ENTRY
+  { "capability": "screenshot", "params": {"name":"$name"}, "elapsed_s": $elapsed },
+ENTRY
+    sleep 0.5
+}
+
 # ---------------------------------------------------------------------------
 # Phase 4: Demo Sequence
+#
+# Pacing is deliberately slow so that UI animations (confetti, toasts,
+# tab transitions) are fully visible in the recording.
 # ---------------------------------------------------------------------------
 
 log "Phase 4: Running demo sequence..."
 
 echo ""
 echo -e "${BOLD}[Counter]${RESET}"
-demo_step "counter.increment" '{"amount":1}' 0.5
-demo_step "counter.increment" '{"amount":1}' 0.5
-demo_step "counter.increment" '{"amount":1}' 0.5
+demo_step "counter.increment" '{"amount":1}' 1.0
+demo_step "counter.increment" '{"amount":1}' 1.0
+demo_step "counter.increment" '{"amount":1}' 1.0
+demo_screenshot "01-counter"
 
 echo ""
 echo -e "${BOLD}[UI Effects]${RESET}"
-demo_step "ui.toast" '{"message":"Features verified ✓"}' 1.5
-demo_step "ui.setAccentColor" '{"color":"purple"}' 0.8
-demo_step "ui.confetti" '{}' 2.0
+demo_step "ui.toast" '{"message":"Features verified ✓"}' 2.5
+demo_screenshot "02-toast"
+demo_step "ui.setAccentColor" '{"color":"purple"}' 1.5
+demo_screenshot "03-accent"
+demo_step "ui.confetti" '{}' 3.0
+demo_screenshot "04-confetti"
 
 echo ""
 echo -e "${BOLD}[Navigation & Items]${RESET}"
-demo_step "navigate" '{"route":"items"}' 1.0
-demo_step "items.add" '{"name":"Test Item 1"}' 0.5
-demo_step "items.add" '{"name":"Test Item 2"}' 0.5
+demo_step "navigate" '{"route":"items"}' 1.5
+demo_screenshot "05-items-page"
+demo_step "items.add" '{"name":"Test Item 1"}' 1.0
+demo_step "items.add" '{"name":"Test Item 2"}' 1.0
+demo_screenshot "06-items-added"
 
-echo ""
-echo -e "${BOLD}[Screenshot]${RESET}"
-"$REMO_BIN" screenshot -a "$ADDR" -o "$ARTIFACTS_DIR/demo-screenshot.jpg" --format jpeg --quality 0.8 2>/dev/null || true
-SCREENSHOT_ELAPSED=$(perl -e "printf '%.2f', $(now_s) - $EPOCH")
-echo -e "  ${GREEN}[$SCREENSHOT_ELAPSED s]${RESET} screenshot"
-cat >> "$TIMESTAMPS_FILE" <<ENTRY
-  { "capability": "screenshot", "params": {}, "elapsed_s": $SCREENSHOT_ELAPSED }
-ENTRY
-sleep 0.5
-
-# Close JSON array
+# Close JSON array — strip trailing comma from last entry
+sed -i '' '$ s/,$//' "$TIMESTAMPS_FILE"
 echo "]" >> "$TIMESTAMPS_FILE"
 
 # ---------------------------------------------------------------------------
 # Phase 5: Stop Recording
 # ---------------------------------------------------------------------------
 
-log "Stopping mirror recording..."
-kill "$MIRROR_PID" 2>/dev/null || true
-wait "$MIRROR_PID" 2>/dev/null || true
-MIRROR_PID=""
+log "Stopping screen recording..."
+kill -INT "$RECORD_PID" 2>/dev/null || true
+wait "$RECORD_PID" 2>/dev/null || true
+RECORD_PID=""
 sleep 1
+
+# Verify recording
+if [ -f "$ARTIFACTS_DIR/demo.mp4" ] && [ -s "$ARTIFACTS_DIR/demo.mp4" ]; then
+    RECORDING_SIZE=$(ls -lh "$ARTIFACTS_DIR/demo.mp4" | awk '{print $5}')
+    echo "  Video saved: $RECORDING_SIZE"
+else
+    echo -e "${RED}WARNING:${RESET} demo.mp4 missing or empty"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
