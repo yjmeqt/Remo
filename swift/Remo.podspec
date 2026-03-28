@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   DESC
   s.homepage     = 'https://github.com/yjmeqt/Remo'
   s.license      = { :type => 'MIT', :file => 'LICENSE' }
-  s.author       = { 'Yi Jiang' => 'yi.jiang@applovin.com' }
+  s.author       = { 'Yi Jiang' => 'yjmeqt@gmail.com' }
   s.platform     = :ios, '13.0'
   s.source       = {
     :http => "https://github.com/yjmeqt/Remo/releases/download/v#{s.version}/RemoSDK.xcframework.zip"
