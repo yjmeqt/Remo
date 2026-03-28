@@ -2,7 +2,7 @@
 
 **Infrastructure for agentic iOS development.**
 
-[![Remo demo preview](docs/assets/remo_preview.png)](https://github.com/yi-jiang-applovin/Remo/releases/download/v0.3.0-demo/remo_demo.mov)
+[![Remo demo preview](docs/assets/remo_preview.png)](https://github.com/yjmeqt/Remo/releases/download/v0.3.0-demo/remo_demo.mov)
 
 AI agents can already write Swift and trigger builds, but they're still blind on iOS. Remo gives them the **eyes** and **hands** they need to discover real devices (USB) and simulators, invoke app capabilities, then **verify the result visually** through screenshots, live mirroring, or recorded video.
 
@@ -12,7 +12,7 @@ The result is a closed loop: **write code → build → call capabilities → in
 
 Watch the full demo video here:
 
-[remo_demo.mov](https://github.com/yi-jiang-applovin/Remo/releases/download/v0.3.0-demo/remo_demo.mov)
+[remo_demo.mov](https://github.com/yjmeqt/Remo/releases/download/v0.3.0-demo/remo_demo.mov)
 
 ```
 # Agent writes code, triggers a build, then verifies via Remo:
@@ -41,19 +41,19 @@ remo mirror -a <addr> --save recording.mp4              # or record video for an
 Add the SPM dependency in Xcode:
 
 ```
-https://github.com/yi-jiang-applovin/remo-spm.git
+https://github.com/yjmeqt/remo-spm.git
 ```
 
 **Swift (CocoaPods)**
 
 ```ruby
-pod 'Remo', :podspec => 'https://raw.githubusercontent.com/yi-jiang-applovin/remo-spm/main/Remo.podspec'
+pod 'Remo', :podspec => 'https://raw.githubusercontent.com/yjmeqt/remo-spm/main/Remo.podspec'
 ```
 
 **Objective-C (CocoaPods)**
 
 ```ruby
-pod 'Remo/ObjC', :podspec => 'https://raw.githubusercontent.com/yi-jiang-applovin/remo-spm/main/Remo.podspec'
+pod 'Remo/ObjC', :podspec => 'https://raw.githubusercontent.com/yjmeqt/remo-spm/main/Remo.podspec'
 ```
 
 ### 2. Register capabilities
@@ -120,7 +120,7 @@ Remo.unregister("detail.getInfo")
 
 ```bash
 # From source
-cargo install --git https://github.com/yi-jiang-applovin/Remo.git remo-cli
+cargo install --git https://github.com/yjmeqt/Remo.git remo-cli
 
 # Or from a local clone
 cargo install --path crates/remo-cli
@@ -213,7 +213,7 @@ Everything below is for contributing to Remo itself.
 ### Build from source
 
 ```bash
-git clone https://github.com/yi-jiang-applovin/Remo.git && cd Remo
+git clone https://github.com/yjmeqt/Remo.git && cd Remo
 make setup   # Configure git hooks
 
 cargo build -p remo-cli              # Build the CLI

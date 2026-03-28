@@ -491,10 +491,10 @@ Outputs an XCFramework at `swift/RemoSDK.xcframework/`.
 
 ### 8.3 SPM distribution
 
-The release CI pipeline (`release.yml`) builds the XCFramework, zips it, and pushes to the [`remo-spm`](https://github.com/yi-jiang-applovin/remo-spm) repo as a binary SPM package. Consumer apps add the dependency:
+The release CI pipeline (`release.yml`) builds the XCFramework, zips it, and pushes to the [`remo-spm`](https://github.com/yjmeqt/remo-spm) repo as a binary SPM package. Consumer apps add the dependency:
 
 ```swift
-.package(url: "https://github.com/yi-jiang-applovin/remo-spm.git", from: "0.2.0")
+.package(url: "https://github.com/yjmeqt/remo-spm.git", from: "0.2.0")
 ```
 
 ### 8.4 Xcode integration
