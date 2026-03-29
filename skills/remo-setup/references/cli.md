@@ -2,6 +2,31 @@
 
 This reference travels with the skill so the setup workflow does not depend on repository-only docs.
 
+## Install the Binary
+
+Choose one install path:
+
+```bash
+# Project-local install (recommended for pinned repo installs)
+env REMO_INSTALL_PREFIX="$PWD/.remo" \
+  bash -c "$(curl -fsSL https://github.com/yjmeqt/Remo/releases/latest/download/install-remo.sh)"
+
+# Homebrew (recommended for global installs)
+brew install yjmeqt/tap/remo
+
+# Build from source
+cargo install --git https://github.com/yjmeqt/Remo.git remo-cli
+```
+
+Project-local installs place the binary at `.remo/bin/remo`. Global installs place `remo` on `PATH`.
+
+Verify the install before continuing:
+
+```bash
+test -x .remo/bin/remo && .remo/bin/remo --help
+command -v remo >/dev/null && remo --help
+```
+
 ## Resolve the Binary
 
 Use this order:

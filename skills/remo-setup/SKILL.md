@@ -20,7 +20,7 @@ Read `references/cli.md` before running install or verification commands, or whe
 
 ## Step 1: Install the CLI
 
-Prefer a project-local install so the CLI version stays pinned to the project.
+Prefer a project-local install so the CLI version stays pinned to the project. Use `REMO_INSTALL_PREFIX="$PWD/.remo"` with the release install script when you want the binary to land at `.remo/bin/remo`.
 
 Use the install and verification commands from `references/cli.md`, then resolve the binary in this order:
 
@@ -65,7 +65,7 @@ pod 'Remo/ObjC', :podspec => 'https://raw.githubusercontent.com/yjmeqt/remo-spm/
 
 ## Step 3: Start Remo in Debug Builds
 
-Wire Remo into the app lifecycle and keep it behind `#if DEBUG`.
+Wire Remo into the app lifecycle and keep it behind `#if DEBUG`. The same rule applies to all app-side Remo code: imports, `Remo.start()`, and capability registration should all stay in debug-only code paths.
 
 UIKit example:
 

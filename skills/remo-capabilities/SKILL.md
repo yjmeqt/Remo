@@ -80,6 +80,7 @@ enum RemoCapabilities {
 
 Implementation rules:
 
+- keep all app-side Remo code under `#if DEBUG`, including imports and helper types
 - keep all capability registration under `#if DEBUG`
 - use the app's real router and state types
 - run UIKit work on the main actor

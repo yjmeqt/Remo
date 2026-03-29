@@ -64,11 +64,12 @@ cp -R /path/to/Remo/skills/remo-design-review .claude/skills/
 Each skill folder is self-contained and ships its own `references/cli.md`.
 
 - Start with [`remo-setup/references/cli.md`](remo-setup/references/cli.md) for the broadest onboarding guide
+- That reference now includes both binary installation paths and post-install verification commands
 - Use the `references/cli.md` inside the specific skill you are running for command syntax and caveats that matter to that workflow
 
 ## Requirements
 
-- **Remo CLI** — installed project-locally to `.remo/bin/remo` by `remo-setup`, or globally via `brew install yjmeqt/tap/remo`
+- **Remo CLI** — install it either project-locally with `REMO_INSTALL_PREFIX="$PWD/.remo"` so it lands at `.remo/bin/remo`, or globally with `brew install yjmeqt/tap/remo`
 - **iOS project** that builds and runs on a simulator
-- **Remo SDK** integrated into the app (use `remo-setup` skill if not yet done)
+- **Remo SDK** integrated into the app, with app-side Remo code kept under `#if DEBUG` (use `remo-setup` skill if not yet done)
 - **Figma MCP server** configured (for `remo-design-review` only)
