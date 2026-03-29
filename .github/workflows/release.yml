@@ -148,3 +148,36 @@ jobs:
             git push origin "${VERSION}"
             echo "remo-spm updated and tagged ${VERSION}"
           fi
+
+      - name: Update homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          ARM64_SHA="$(awk '/remo-macos-arm64.tar.gz$/ {print $1}' dist/cli/checksums.txt)"
+          X86_SHA="$(awk '/remo-macos-x86_64.tar.gz$/ {print $1}' dist/cli/checksums.txt)"
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/yjmeqt/homebrew-tap.git" /tmp/homebrew-tap
+          cd /tmp/homebrew-tap
+          mkdir -p Formula
+
+          bash "$GITHUB_WORKSPACE/scripts/render-homebrew-formula.sh" \
+            --version "${VERSION}" \
+            --repo "yjmeqt/Remo" \
+            --arm64-sha "${ARM64_SHA}" \
+            --x86-sha "${X86_SHA}" \
+            > Formula/remo.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/remo.rb
+
+          if git diff --cached --quiet; then
+            echo "No changes to homebrew-tap, skipping."
+          else
+            git commit -m "Update remo to v${VERSION}"
+            git push origin main
+            echo "homebrew-tap updated to v${VERSION}"
+          fi
