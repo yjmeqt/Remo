@@ -212,6 +212,29 @@ These are registered automatically by the SDK — no setup required:
 | `__start_mirror` | Start H.264 screen mirror stream |
 | `__stop_mirror` | Stop mirror stream |
 
+## Claude Code Skills
+
+Remo ships a set of [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/skills) that give AI agents structured workflows for iOS development. Install them into any iOS project to get a closed-loop: setup → capabilities → verified development → design review.
+
+| Skill | Type | Purpose |
+|-------|------|---------|
+| [`remo-setup`](skills/remo-setup.md) | One-time | Install CLI, integrate SDK, verify connection |
+| [`remo-capabilities`](skills/remo-capabilities.md) | Periodic | Map app features → register capabilities → document |
+| [`remo`](skills/remo.md) | Ongoing | Verified development with screenshot evidence and timeline reports |
+| [`remo-design-review`](skills/remo-design-review.md) | Periodic | Compare running app against Figma designs |
+
+### Install skills into your iOS project
+
+```bash
+mkdir -p .claude/skills
+cp /path/to/Remo/skills/remo-setup.md .claude/skills/
+cp /path/to/Remo/skills/remo-capabilities.md .claude/skills/
+cp /path/to/Remo/skills/remo.md .claude/skills/
+cp /path/to/Remo/skills/remo-design-review.md .claude/skills/
+```
+
+See [`skills/README.md`](skills/README.md) for full documentation.
+
 ---
 
 ## Development
