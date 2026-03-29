@@ -8,7 +8,9 @@ pub mod sys;
 #[allow(unsafe_code)]
 pub mod txt;
 
-pub use browser::{BrowseEvent, ServiceBrowser, ServiceInfo};
+pub use browser::{
+    socket_addr_for_host, BrowseEvent, ServiceBrowser, ServiceInfo, ServiceMetadata,
+};
 pub use error::BonjourError;
 pub use register::ServiceRegistration;
 pub use txt::TxtRecord;

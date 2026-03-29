@@ -182,7 +182,7 @@ fn extract_json_data(resp: RpcResponse) -> Result<serde_json::Value, (StatusCode
 fn device_info_json(info: &DeviceInfo) -> serde_json::Value {
     let (transport, addr) = match &info.transport {
         DeviceTransport::Usb { .. } => ("usb", None),
-        DeviceTransport::Bonjour { host, port } => ("bonjour", Some(format!("{host}:{port}"))),
+        DeviceTransport::Bonjour { .. } => ("bonjour", info.addr().map(|addr| addr.to_string())),
         DeviceTransport::Manual { addr } => ("manual", Some(addr.to_string())),
     };
     serde_json::json!({

@@ -20,10 +20,17 @@ async fn register_and_discover() {
 
     let (_browser, mut rx) = ServiceBrowser::browse(SERVICE_TYPE).unwrap();
 
-    let event = timeout(Duration::from_secs(5), rx.recv())
-        .await
-        .expect("timed out waiting for browse event")
-        .expect("channel closed");
+    let event = timeout(Duration::from_secs(5), async {
+        while let Some(event) = rx.recv().await {
+            match &event {
+                BrowseEvent::Found(info) if info.name == "RemoTest" => return event,
+                _ => continue,
+            }
+        }
+        panic!("channel closed before RemoTest was discovered");
+    })
+    .await
+    .expect("timed out waiting for RemoTest browse event");
 
     match event {
         BrowseEvent::Found(info) => {
