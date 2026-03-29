@@ -13,7 +13,7 @@ env:
 
 jobs:
   release:
-    name: Build & Release XCFramework
+    name: Build & Release SDK And CLI
     runs-on: macos-26
     environment: production
     steps:
@@ -21,7 +21,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios, aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Build XCFramework
         run: ./build-ios.sh release
@@ -50,10 +50,35 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Build CLI binaries
+        run: |
+          cargo build -p remo-cli --release --target aarch64-apple-darwin
+          cargo build -p remo-cli --release --target x86_64-apple-darwin
+
+      - name: Package CLI release artifacts
+        run: |
+          mkdir -p dist/cli
+          bash scripts/package-cli-release.sh \
+            --version "${{ steps.version.outputs.version }}" \
+            --input target/aarch64-apple-darwin/release/remo \
+            --target aarch64-apple-darwin \
+            --output-dir dist/cli
+          bash scripts/package-cli-release.sh \
+            --version "${{ steps.version.outputs.version }}" \
+            --input target/x86_64-apple-darwin/release/remo \
+            --target x86_64-apple-darwin \
+            --output-dir dist/cli
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: RemoSDK.xcframework.zip
+          files: |
+            RemoSDK.xcframework.zip
+            dist/cli/remo-macos-arm64.tar.gz
+            dist/cli/remo-macos-x86_64.tar.gz
+            dist/cli/checksums.txt
+            scripts/install-remo.sh
+            scripts/uninstall-remo.sh
           body: |
             ## RemoSDK ${{ github.ref_name }}
 
@@ -124,4 +149,37 @@ jobs:
             git push origin main
             git push origin "${VERSION}"
             echo "remo-spm updated and tagged ${VERSION}"
+          fi
+
+      - name: Update homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          ARM64_SHA="$(awk '/remo-macos-arm64.tar.gz$/ {print $1}' dist/cli/checksums.txt)"
+          X86_SHA="$(awk '/remo-macos-x86_64.tar.gz$/ {print $1}' dist/cli/checksums.txt)"
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/yjmeqt/homebrew-tap.git" /tmp/homebrew-tap
+          cd /tmp/homebrew-tap
+          mkdir -p Formula
+
+          bash "$GITHUB_WORKSPACE/scripts/render-homebrew-formula.sh" \
+            --version "${VERSION}" \
+            --repo "yjmeqt/Remo" \
+            --arm64-sha "${ARM64_SHA}" \
+            --x86-sha "${X86_SHA}" \
+            > Formula/remo.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/remo.rb
+
+          if git diff --cached --quiet; then
+            echo "No changes to homebrew-tap, skipping."
+          else
+            git commit -m "Update remo to v${VERSION}"
+            git push origin main
+            echo "homebrew-tap updated to v${VERSION}"
           fi

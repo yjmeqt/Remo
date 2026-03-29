@@ -119,12 +119,27 @@ Remo.unregister("detail.getInfo")
 ### 3. Install the CLI
 
 ```bash
-# From source
-cargo install --git https://github.com/yjmeqt/Remo.git remo-cli
+# Homebrew (recommended)
+brew install yjmeqt/tap/remo
 
-# Or from a local clone
-cargo install --path crates/remo-cli
+# One-command install
+curl -fsSL https://github.com/yjmeqt/Remo/releases/latest/download/install-remo.sh | bash
+
+# Or from source
+cargo install --git https://github.com/yjmeqt/Remo.git remo-cli
 ```
+
+To uninstall:
+
+```bash
+# Homebrew install
+brew uninstall remo
+
+# Script-managed install
+curl -fsSL https://github.com/yjmeqt/Remo/releases/latest/download/uninstall-remo.sh | bash
+```
+
+Manual release downloads are also available on the GitHub Releases page if you prefer to place `remo` on your `PATH` yourself.
 
 ### 4. Discover and interact
 
