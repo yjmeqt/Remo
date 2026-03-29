@@ -141,6 +141,43 @@ A first-class design goal: contributors should NOT need cross-platform expertise
 - `e2e.yml`: Add Android emulator E2E job (similar to iOS simulator job)
 - `release.yml`: Build `.so` for `aarch64-linux-android` + `x86_64-linux-android`, package AAR, publish
 
+## Extensibility: Cross-Platform Frameworks
+
+### Architecture for framework plugins
+
+The built-in capabilities (screenshot, device info, video) are **OS-level** — they work the same regardless of what framework the app uses. The only capability that varies by framework is **view tree introspection**:
+
+| Framework | Native view tree | Framework-specific tree |
+|---|---|---|
+| iOS native (UIKit/SwiftUI) | `__view_tree` (built-in) | — |
+| Android native | `__view_tree` (built-in) | — |
+| React Native | `__view_tree` shows native views | `__rn_component_tree` (plugin) |
+| Flutter | `__view_tree` shows Flutter engine view | `__flutter_widget_tree` (plugin) |
+
+Framework-specific view tree support is modeled as **optional plugins** — separate packages that register additional capabilities at runtime:
+
+```kotlin
+// Standard Remo SDK
+Remo.start()  // built-in: screenshot, device_info, native view tree
+
+// React Native plugin (separate npm + native module package)
+RemoReactNative.register()  // adds: __rn_component_tree capability
+```
+
+Plugins live in **separate repos/packages**, not in the main Remo repo. This keeps the core repo focused on OS-level concerns and scales to N frameworks without adding crates.
+
+### Web support: out of scope
+
+Web development already has mature agent-friendly automation tooling:
+
+| Tool | AI agent ready? |
+|---|---|
+| Playwright (+ MCP server) | Yes — screenshot, DOM, input, cross-browser |
+| Puppeteer / CDP | Yes — full Chrome control |
+| Cypress | Less so (developer-focused) |
+
+Remo's unique value is **mobile**, where no equivalent of "Playwright for apps" exists. For workflows that span web + mobile, agents can use Playwright for the web part and Remo for the mobile part — no need for Remo to reinvent the web automation wheel.
+
 ## Open Design Decisions
 
 To be resolved when implementation begins:
