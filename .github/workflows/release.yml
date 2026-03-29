@@ -13,7 +13,7 @@ env:
 
 jobs:
   release:
-    name: Build & Release XCFramework
+    name: Build & Release SDK And CLI
     runs-on: macos-26
     environment: production
     steps:
@@ -21,7 +21,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios, aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Build XCFramework
         run: ./build-ios.sh release
@@ -50,10 +50,33 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Build CLI binaries
+        run: |
+          cargo build -p remo-cli --release --target aarch64-apple-darwin
+          cargo build -p remo-cli --release --target x86_64-apple-darwin
+
+      - name: Package CLI release artifacts
+        run: |
+          mkdir -p dist/cli
+          bash scripts/package-cli-release.sh \
+            --version "${{ steps.version.outputs.version }}" \
+            --input target/aarch64-apple-darwin/release/remo \
+            --target aarch64-apple-darwin \
+            --output-dir dist/cli
+          bash scripts/package-cli-release.sh \
+            --version "${{ steps.version.outputs.version }}" \
+            --input target/x86_64-apple-darwin/release/remo \
+            --target x86_64-apple-darwin \
+            --output-dir dist/cli
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: RemoSDK.xcframework.zip
+          files: |
+            RemoSDK.xcframework.zip
+            dist/cli/remo-macos-arm64.tar.gz
+            dist/cli/remo-macos-x86_64.tar.gz
+            dist/cli/checksums.txt
           body: |
             ## RemoSDK ${{ github.ref_name }}
 
