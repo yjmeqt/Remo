@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-29
+
+### Added
+
+- **Claude Code skills**: Skills for Remo-powered iOS development workflows (`remo-setup`, `remo` daily skill)
+
+### Fixed
+
+- **Bonjour simulator discovery**: Improved reliability of mDNS-based simulator connections
+- **CLI release distribution**: Addressed code review issues for packaging and install scripts
+
+### Changed
+
+- **Build artifacts**: Ignore local Xcode and SPM caches in version control
+
 ## [0.4.2] - 2026-03-29
 
 ### Added

@@ -61,7 +61,7 @@ To install a specific version instead of latest:
 
 ```bash
 curl -fsSL https://github.com/yjmeqt/Remo/releases/latest/download/install-remo.sh \
-  | REMO_INSTALL_PREFIX=.remo bash -s -- --version 0.4.2
+  | REMO_INSTALL_PREFIX=.remo bash -s -- --version 0.4.3
 ```
 
 ### CLI resolution convention

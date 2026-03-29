@@ -6,14 +6,14 @@ OUTPUT="$(mktemp)"
 trap 'rm -f "${OUTPUT}"' EXIT
 
 bash "${ROOT}/scripts/render-homebrew-formula.sh" \
-  --version 0.4.2 \
+  --version 0.4.3 \
   --repo yjmeqt/Remo \
   --arm64-sha 1111111111111111111111111111111111111111111111111111111111111111 \
   --x86-sha 2222222222222222222222222222222222222222222222222222222222222222 \
   > "${OUTPUT}"
 
 grep -q 'class Remo < Formula' "${OUTPUT}"
-grep -q 'version "0.4.2"' "${OUTPUT}"
+grep -q 'version "0.4.3"' "${OUTPUT}"
 grep -q 'remo-macos-arm64.tar.gz' "${OUTPUT}"
 grep -q 'remo-macos-x86_64.tar.gz' "${OUTPUT}"
 grep -q '1111111111111111111111111111111111111111111111111111111111111111' "${OUTPUT}"
