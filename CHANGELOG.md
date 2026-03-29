@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`remo-desktop` fMP4 muxer**: Generates ISO BMFF init segments and moof/mdat fragments for MSE playback
 - **`remo-desktop` stream receiver**: Ordered frame collection from broadcast channel
 - **`remo-desktop` web player**: Standalone MSE-based video player page
+- **CLI release artifacts**: GitHub Release now includes macOS `arm64` and `x86_64` tarballs for `remo`
+- **First-party Homebrew tap flow**: Release automation can update a dedicated tap repo from the same tagged release
+- **CLI install scripts**: `install-remo.sh` and `uninstall-remo.sh` provide non-Homebrew install and removal flows
 
 ### Changed
 
@@ -35,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `remo-protocol` max frame size increased from 16 MiB to 64 MiB for video frames
 - `remo-protocol` codec handles JSON (0x00), Binary (0x01), and Stream (0x02) frame types
 - `remo-desktop` device manager Bonjour connection tries all resolved addresses instead of only the first
+- CLI installation docs now prioritize Homebrew and release artifacts before source installs
 
 ## [0.2.0] - 2026-03-21
 
