@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-29
+
 ### Added
 
 - **`remo-daemon` crate**: Background daemon with ConnectionPool (auto-connect, keepalive, exponential backoff reconnection), EventBus (ring buffer + broadcast), and full HTTP/WebSocket API for device management, capability invocation, event streaming, and screenshots
