@@ -1,4 +1,4 @@
-.PHONY: setup build check test cli cli-release-test cli-release-local ios ios-sim ios-device clean fmt lint e2e
+.PHONY: setup build check test cli cli-release-test cli-release-local cli-release-workflow-test ios ios-sim ios-device clean fmt lint e2e
 
 # First-time setup (run once after clone or worktree creation)
 setup:
@@ -32,6 +32,9 @@ cli-release-local:
 		--input target/release/remo \
 		--target "$$(rustc -vV | awk '/host:/ {print $$2}')" \
 		--output-dir dist/cli
+
+cli-release-workflow-test:
+	bash tests/cli_release_workflow.sh
 
 # Build iOS XCFramework — pick the fastest option for your workflow:
 #   make ios-sim     arm64 simulator only (~16s, local dev)
