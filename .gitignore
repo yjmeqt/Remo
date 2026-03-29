@@ -20,6 +20,12 @@ swift/RemoSDK.xcframework/
 # Swift Package Manager
 .build/
 .swiftpm/
+.spm/
+**/.spm/
+
+# Xcode build caches
+.derivedData/
+**/.derivedData/
 
 # IDE
 .cursor/
