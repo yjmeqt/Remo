@@ -281,6 +281,7 @@ cargo build -p remo-cli              # Build the CLI
 #### Roadmap
 - [x] Auto-reconnection on disconnect (daemon ConnectionPool)
 - [x] Capability change events + dynamic unregister API
+- [ ] Skill installation and update (`remo init` / `remo skills update` to install/update `.claude/skills/` from release assets, with version pinning)
 - [ ] macOS GUI (SwiftUI device inspector)
 - [ ] View property modification (`__view_set`)
 - [ ] Protocol versioning / handshake
