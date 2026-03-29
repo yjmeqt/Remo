@@ -98,6 +98,8 @@ Remo.register("verify.feed_count") { _ in
 
 Keep verification capabilities inside debug-only code and return structured JSON.
 
+All app-side Remo code should stay under `#if DEBUG`, including imports, startup hooks, and verification capability registration.
+
 ## Step 6: Write the Summary
 
 End each verification with a summary table covering:

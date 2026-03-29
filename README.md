@@ -34,6 +34,8 @@ remo mirror -a <addr> --save recording.mp4              # or record video for an
 
 ## Quick Start
 
+All app-side Remo integration code should stay in debug-only paths. Wrap imports, startup, and capability registration in `#if DEBUG`.
+
 ### 1. Add the SDK to your iOS app
 
 **Swift (SPM)**
@@ -61,6 +63,7 @@ pod 'Remo/ObjC', :podspec => 'https://raw.githubusercontent.com/yjmeqt/remo-spm/
 **Swift**
 
 ```swift
+#if DEBUG
 import RemoSwift
 
 // The server starts automatically on first API access.
@@ -73,11 +76,13 @@ Remo.register("myFeature.toggle") { params in
 
 // Unregister when no longer needed (e.g., in .onDisappear):
 Remo.unregister("myFeature.toggle")
+#endif
 ```
 
 **Objective-C**
 
 ```objc
+#if DEBUG
 #import <RemoObjC/RMRemo.h>
 
 // The server starts automatically on first API access.
@@ -90,6 +95,7 @@ Remo.unregister("myFeature.toggle")
 
 // Unregister when no longer needed:
 [RMRemo unregisterCapability:@"myFeature.toggle"];
+#endif
 ```
 
 Capabilities can be unregistered dynamically — useful for page-level or conditional capabilities:
@@ -97,16 +103,19 @@ Capabilities can be unregistered dynamically — useful for page-level or condit
 **Swift**
 
 ```swift
+#if DEBUG
 // Register when entering a screen
 Remo.register("detail.getInfo") { _ in ["item": itemName] }
 
 // Unregister when leaving
 Remo.unregister("detail.getInfo")
+#endif
 ```
 
 **Objective-C**
 
 ```objc
+#if DEBUG
 // Register
 [RMRemo registerCapability:@"detail.getInfo" handler:^NSDictionary *(NSDictionary *params) {
     return @{@"item": self.itemName};
@@ -114,6 +123,7 @@ Remo.unregister("detail.getInfo")
 
 // Unregister
 [RMRemo unregisterCapability:@"detail.getInfo"];
+#endif
 ```
 
 ### 3. Install the CLI
