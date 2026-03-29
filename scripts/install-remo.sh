@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# NOTE: Checksum verification guards against transport corruption only.
+# Both the tarball and checksums.txt are fetched from the same origin.
+# Code signing / notarization is planned for a future release.
 set -euo pipefail
 
 VERSION="latest"
@@ -34,6 +37,13 @@ case "${ARCH}" in
 esac
 
 PREFIX="${REMO_INSTALL_PREFIX:-${DEFAULT_PREFIX}}"
+
+if command -v brew >/dev/null 2>&1 && brew list remo >/dev/null 2>&1; then
+  echo "Warning: remo is already installed via Homebrew." >&2
+  echo "Proceeding will place a second copy at ${PREFIX}/bin/remo." >&2
+  echo "Consider using: brew upgrade remo" >&2
+fi
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 

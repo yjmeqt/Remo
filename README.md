@@ -135,8 +135,9 @@ To uninstall:
 # Homebrew install
 brew uninstall remo
 
-# Script-managed install
-curl -fsSL https://github.com/yjmeqt/Remo/releases/latest/download/uninstall-remo.sh | bash
+# Script-managed install (download, inspect, then run)
+curl -fsSL https://github.com/yjmeqt/Remo/releases/latest/download/uninstall-remo.sh -o uninstall-remo.sh
+bash uninstall-remo.sh
 ```
 
 Manual release downloads are also available on the GitHub Releases page if you prefer to place `remo` on your `PATH` yourself.
