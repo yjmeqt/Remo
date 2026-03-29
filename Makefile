@@ -25,6 +25,14 @@ cli:
 cli-release-test:
 	bash tests/cli_release_packaging.sh
 
+cli-release-local:
+	cargo build -p remo-cli --release
+	bash scripts/package-cli-release.sh \
+		--version local \
+		--input target/release/remo \
+		--target "$$(rustc -vV | awk '/host:/ {print $$2}')" \
+		--output-dir dist/cli
+
 # Build iOS XCFramework — pick the fastest option for your workflow:
 #   make ios-sim     arm64 simulator only (~16s, local dev)
 #   make ios-device  arm64 device only    (~16s, real device)
