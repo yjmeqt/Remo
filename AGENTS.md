@@ -84,7 +84,7 @@ The demo hero plays a real screen recording (`website/public/demo.mp4`) synced t
 
 ## Claude Code Skills (`skills/`)
 
-The `skills/` directory contains Claude Code skills — structured workflows for AI agents working on Remo-integrated iOS projects. These are installed into target projects at `.claude/skills/`.
+The `skills/` directory contains Claude Code skills — structured workflows for AI agents working on Remo-integrated iOS projects. Each skill now lives in its own folder with a `SKILL.md`, optional `references/`, and `agents/openai.yaml`. These folders are installed into target projects at `.claude/skills/`.
 
 | Skill | When to use |
 |-------|-------------|
@@ -97,7 +97,7 @@ The `skills/` directory contains Claude Code skills — structured workflows for
 remo-setup → remo-capabilities → remo (daily) ↔ remo-design-review (periodic)
 ```
 
-When editing skill files, verify that CLI commands, SDK API references, and example code match the current implementation.
+When editing skill files, verify that CLI commands, SDK API references, and example code match the current implementation. Keep each skill's `references/cli.md` aligned with the others, and keep `docs/cli.md`, `README.md`, and the skill folders aligned with those distributed references.
 
 ## Code Style
 

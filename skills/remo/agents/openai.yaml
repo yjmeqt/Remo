@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remo Workflow"
+  short_description: "Verify iOS work with Remo evidence"
+  default_prompt: "Use $remo to verify this iOS task with screenshots, capability checks, and a reviewable report."

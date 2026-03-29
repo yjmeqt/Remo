@@ -198,6 +198,11 @@ remo stop                                 # Stop the daemon
 remo status                               # Check daemon health and device count
 ```
 
+For a full command guide, see:
+
+- [`skills/remo-setup/references/cli.md`](skills/remo-setup/references/cli.md) for the distributed onboarding CLI reference
+- [`docs/cli.md`](docs/cli.md) for the repository maintenance checklist that keeps CLI docs aligned
+
 ## Built-in Capabilities
 
 These are registered automatically by the SDK — no setup required:
@@ -219,22 +224,22 @@ Remo ships a set of [Claude Code skills](https://docs.anthropic.com/en/docs/clau
 
 | Skill | Type | Purpose |
 |-------|------|---------|
-| [`remo-setup`](skills/remo-setup.md) | One-time | Install CLI, integrate SDK, verify connection |
-| [`remo-capabilities`](skills/remo-capabilities.md) | Periodic | Map app features → register capabilities → document |
-| [`remo`](skills/remo.md) | Ongoing | Verified development with screenshot evidence and timeline reports |
-| [`remo-design-review`](skills/remo-design-review.md) | Periodic | Compare running app against Figma designs |
+| [`remo-setup`](skills/remo-setup/SKILL.md) | One-time | Install CLI, integrate SDK, verify connection |
+| [`remo-capabilities`](skills/remo-capabilities/SKILL.md) | Periodic | Map app features → register capabilities → document |
+| [`remo`](skills/remo/SKILL.md) | Ongoing | Verified development with screenshot evidence and timeline reports |
+| [`remo-design-review`](skills/remo-design-review/SKILL.md) | Periodic | Compare running app against Figma designs |
 
 ### Install skills into your iOS project
 
 ```bash
 mkdir -p .claude/skills
-cp /path/to/Remo/skills/remo-setup.md .claude/skills/
-cp /path/to/Remo/skills/remo-capabilities.md .claude/skills/
-cp /path/to/Remo/skills/remo.md .claude/skills/
-cp /path/to/Remo/skills/remo-design-review.md .claude/skills/
+cp -R /path/to/Remo/skills/remo-setup .claude/skills/
+cp -R /path/to/Remo/skills/remo-capabilities .claude/skills/
+cp -R /path/to/Remo/skills/remo .claude/skills/
+cp -R /path/to/Remo/skills/remo-design-review .claude/skills/
 ```
 
-See [`skills/README.md`](skills/README.md) for full documentation.
+See [`skills/README.md`](skills/README.md) for the skill overview. Each distributed skill folder carries its own `references/cli.md`; start with [`skills/remo-setup/references/cli.md`](skills/remo-setup/references/cli.md) for the broadest CLI guide.
 
 ---
 

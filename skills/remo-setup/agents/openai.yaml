@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remo Setup"
+  short_description: "Install the CLI and integrate Remo SDK"
+  default_prompt: "Use $remo-setup to install Remo for this iOS project and verify the app is reachable from the CLI."
