@@ -6,10 +6,10 @@ AI agent skills that give coding agents eyes and hands for iOS development.
 
 | Skill | Type | Purpose | When to use |
 |-------|------|---------|-------------|
-| [`remo-setup`](remo-setup.md) | Rigid, one-time | Integrate Remo SDK | First time adding Remo to a project |
-| [`remo-capabilities`](remo-capabilities.md) | Rigid, periodic | Map features → register capabilities → document | After setup, or when features change |
-| [`remo`](remo.md) | Flexible, ongoing | Verified development workflow with timeline reports | Every task — verify, debug, test, explore |
-| [`remo-design-review`](remo-design-review.md) | Rigid, periodic | Compare app against Figma designs | Before release, after UI changes, design QA |
+| [`remo-setup`](remo-setup/SKILL.md) | Rigid, one-time | Integrate Remo SDK | First time adding Remo to a project |
+| [`remo-capabilities`](remo-capabilities/SKILL.md) | Rigid, periodic | Map features → register capabilities → document | After setup, or when features change |
+| [`remo`](remo/SKILL.md) | Flexible, ongoing | Verified development workflow with timeline reports | Every task — verify, debug, test, explore |
+| [`remo-design-review`](remo-design-review/SKILL.md) | Rigid, periodic | Compare app against Figma designs | Before release, after UI changes, design QA |
 
 ## How They Fit Together
 
@@ -51,13 +51,20 @@ Skills are installed **per-repo** — each iOS project gets its own copy in `.cl
 ```bash
 # From your iOS project root
 mkdir -p .claude/skills
-cp /path/to/Remo/skills/remo-setup.md .claude/skills/
-cp /path/to/Remo/skills/remo-capabilities.md .claude/skills/
-cp /path/to/Remo/skills/remo.md .claude/skills/
-cp /path/to/Remo/skills/remo-design-review.md .claude/skills/
+cp -R /path/to/Remo/skills/remo-setup .claude/skills/
+cp -R /path/to/Remo/skills/remo-capabilities .claude/skills/
+cp -R /path/to/Remo/skills/remo .claude/skills/
+cp -R /path/to/Remo/skills/remo-design-review .claude/skills/
 ```
 
 <!-- TODO: Automate skill installation — options: `remo init` CLI command, or dedicated install script that copies skills to `.claude/skills/` -->
+
+## CLI Reference
+
+Each skill folder is self-contained and ships its own `references/cli.md`.
+
+- Start with [`remo-setup/references/cli.md`](remo-setup/references/cli.md) for the broadest onboarding guide
+- Use the `references/cli.md` inside the specific skill you are running for command syntax and caveats that matter to that workflow
 
 ## Requirements
 

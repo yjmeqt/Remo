@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remo Capabilities"
+  short_description: "Map and register useful Remo capabilities"
+  default_prompt: "Use $remo-capabilities to map this app's screens and state into practical Remo capabilities."

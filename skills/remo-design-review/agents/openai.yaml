@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remo Design Review"
+  short_description: "Compare the running app to Figma"
+  default_prompt: "Use $remo-design-review to reproduce this Figma screen in the app and write a compliance report."
