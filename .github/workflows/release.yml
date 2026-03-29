@@ -94,6 +94,8 @@ jobs:
             | File | SHA-256 |
             |------|---------|
             | RemoSDK.xcframework.zip | `${{ steps.checksum.outputs.checksum }}` |
+            | remo-macos-arm64.tar.gz | see `checksums.txt` |
+            | remo-macos-x86_64.tar.gz | see `checksums.txt` |
           generate_release_notes: true
 
       # Auto-update remo-spm with new URL + checksum and tag the release.
@@ -160,6 +162,11 @@ jobs:
 
           ARM64_SHA="$(awk '/remo-macos-arm64.tar.gz$/ {print $1}' dist/cli/checksums.txt)"
           X86_SHA="$(awk '/remo-macos-x86_64.tar.gz$/ {print $1}' dist/cli/checksums.txt)"
+
+          if [[ -z "${ARM64_SHA}" || -z "${X86_SHA}" ]]; then
+            echo "Failed to extract checksums from dist/cli/checksums.txt" >&2
+            exit 1
+          fi
 
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/yjmeqt/homebrew-tap.git" /tmp/homebrew-tap
           cd /tmp/homebrew-tap

@@ -53,9 +53,14 @@ mkdir -p "${OUTPUT_DIR}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 cp "${INPUT}" "${TMP_DIR}/remo"
 chmod +x "${TMP_DIR}/remo"
-tar -C "${TMP_DIR}" -czf "${OUTPUT_DIR}/${ARTIFACT_NAME}" remo
+if [[ -f "${REPO_ROOT}/LICENSE" ]]; then
+  cp "${REPO_ROOT}/LICENSE" "${TMP_DIR}/LICENSE"
+fi
+tar -C "${TMP_DIR}" -czf "${OUTPUT_DIR}/${ARTIFACT_NAME}" remo LICENSE
 
 if [[ -f "${OUTPUT_DIR}/checksums.txt" ]]; then
   rm "${OUTPUT_DIR}/checksums.txt"

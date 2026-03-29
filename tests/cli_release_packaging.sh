@@ -17,5 +17,6 @@ bash "${ROOT}/scripts/package-cli-release.sh" \
 
 test -f "${OUT_DIR}/dist/remo-macos-arm64.tar.gz"
 tar -tzf "${OUT_DIR}/dist/remo-macos-arm64.tar.gz" | grep -qx 'remo'
+tar -tzf "${OUT_DIR}/dist/remo-macos-arm64.tar.gz" | grep -qx 'LICENSE'
 test -f "${OUT_DIR}/dist/checksums.txt"
 grep -q 'remo-macos-arm64.tar.gz' "${OUT_DIR}/dist/checksums.txt"
