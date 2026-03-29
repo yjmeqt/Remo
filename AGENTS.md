@@ -82,6 +82,23 @@ cd website && npm run build                # Production build → dist/
 
 The demo hero plays a real screen recording (`website/public/demo.mp4`) synced to a terminal animation. To re-record the demo video, see `scripts/record-demo.sh`.
 
+## Claude Code Skills (`skills/`)
+
+The `skills/` directory contains Claude Code skills — structured workflows for AI agents working on Remo-integrated iOS projects. These are installed into target projects at `.claude/skills/`.
+
+| Skill | When to use |
+|-------|-------------|
+| `remo-setup` | First time adding Remo to a project — installs CLI to `.remo/bin/`, adds SDK dependency, wires `Remo.start()`, verifies connection |
+| `remo-capabilities` | After setup or when features change — explores the app, maps features to capabilities, registers them, writes `.remo/capabilities.md` |
+| `remo` | Every task — connect → baseline → [code → build → checkpoint with screenshots] → verification report |
+| `remo-design-review` | Before release or after UI changes — fetches Figma designs, constructs app state, captures screenshots, produces side-by-side compliance report |
+
+```
+remo-setup → remo-capabilities → remo (daily) ↔ remo-design-review (periodic)
+```
+
+When editing skill files, verify that CLI commands, SDK API references, and example code match the current implementation.
+
 ## Code Style
 
 - **Rust**: `rustfmt.toml` enforces max_width=100. Workspace clippy lints are in `Cargo.toml` (e.g., `undocumented_unsafe_blocks`, `await_holding_lock`, `large_futures`).
