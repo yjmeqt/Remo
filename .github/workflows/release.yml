@@ -77,6 +77,8 @@ jobs:
             dist/cli/remo-macos-arm64.tar.gz
             dist/cli/remo-macos-x86_64.tar.gz
             dist/cli/checksums.txt
+            scripts/install-remo.sh
+            scripts/uninstall-remo.sh
           body: |
             ## RemoSDK ${{ github.ref_name }}
 
