@@ -13,8 +13,8 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser)]
 #[command(name = "remo", about = "Remote control bridge for iOS devices")]
 struct Cli {
-    /// Verbosity (-v, -vv, -vvv)
-    #[arg(short, long, action = clap::ArgAction::Count)]
+    /// Verbosity for the CLI. Use `remo -v devices` or `remo devices -v`.
+    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
 
     #[command(subcommand)]
@@ -178,13 +178,8 @@ enum Command {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let filter = match cli.verbose {
-        0 => "remo=info",
-        1 => "remo=debug",
-        _ => "remo=trace",
-    };
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::new(filter))
+        .with_env_filter(EnvFilter::new(log_filter(cli.verbose)))
         .init();
 
     match cli.command {
@@ -348,6 +343,15 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn log_filter(verbose: u8) -> &'static str {
+    match verbose {
+        0 => "remo=warn",
+        1 => "remo=info",
+        2 => "remo=debug",
+        _ => "remo=trace",
+    }
 }
 
 /// Connect via USB tunnel (if --device given) or direct TCP.
@@ -910,4 +914,29 @@ async fn cmd_status() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{log_filter, Cli};
+    use clap::Parser;
+
+    #[test]
+    fn default_logging_is_quiet() {
+        assert_eq!(log_filter(0), "remo=warn");
+    }
+
+    #[test]
+    fn verbose_flags_increase_logging_detail() {
+        assert_eq!(log_filter(1), "remo=info");
+        assert_eq!(log_filter(2), "remo=debug");
+        assert_eq!(log_filter(3), "remo=trace");
+    }
+
+    #[test]
+    fn verbose_flag_is_accepted_after_subcommand() {
+        let cli = Cli::try_parse_from(["remo", "devices", "-v"]).expect("devices -v should parse");
+
+        assert_eq!(cli.verbose, 1);
+    }
 }

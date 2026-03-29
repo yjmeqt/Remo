@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use remo_bonjour::{BrowseEvent, ServiceBrowser};
+use remo_bonjour::{socket_addr_for_host, BrowseEvent, ServiceBrowser, ServiceMetadata};
 use remo_transport::Connection;
 use remo_usbmuxd::{Device, DeviceEvent, UsbmuxClient};
 use tokio::sync::mpsc;
@@ -51,16 +51,19 @@ pub enum DeviceTransport {
 impl DeviceInfo {
     pub fn addr(&self) -> Option<SocketAddr> {
         match &self.transport {
-            DeviceTransport::Bonjour { host, port } => {
-                use std::net::ToSocketAddrs;
-                format!("{}:{}", host.trim_end_matches('.'), port)
-                    .to_socket_addrs()
-                    .ok()?
-                    .next()
-            }
+            DeviceTransport::Bonjour { host, port } => socket_addr_for_host(host, *port),
             DeviceTransport::Manual { addr } => Some(*addr),
             DeviceTransport::Usb { .. } => None,
         }
+    }
+}
+
+fn bonjour_display_name(instance_name: &str, metadata: &ServiceMetadata) -> String {
+    match (&metadata.device_name, &metadata.app_name) {
+        (Some(device_name), Some(app_name)) => format!("{device_name} · {app_name}"),
+        (Some(device_name), None) => device_name.clone(),
+        (None, Some(app_name)) => app_name.clone(),
+        (None, None) => instance_name.to_string(),
     }
 }
 
@@ -147,7 +150,7 @@ impl DeviceManager {
                         let id = DeviceId::Bonjour(svc.name.clone());
                         let info = DeviceInfo {
                             id: id.clone(),
-                            display_name: svc.name.clone(),
+                            display_name: bonjour_display_name(&svc.name, &svc.metadata),
                             transport: DeviceTransport::Bonjour {
                                 host: svc.host.clone(),
                                 port: svc.port,
@@ -246,5 +249,33 @@ impl DeviceManager {
     /// List all currently known devices.
     pub fn list_devices(&self) -> Vec<DeviceInfo> {
         self.devices.iter().map(|e| e.value().clone()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bonjour_display_name;
+    use remo_bonjour::ServiceMetadata;
+
+    #[test]
+    fn prefers_device_name_and_app_name_for_bonjour_display() {
+        let metadata = ServiceMetadata {
+            device_name: Some("iPhone 17 Pro".into()),
+            device_model: Some("iPhone".into()),
+            app_name: Some("RemoExample".into()),
+            bundle_id: Some("com.example.remo".into()),
+            platform: Some("simulator".into()),
+        };
+
+        let display_name = bonjour_display_name("Yi Jiang's Mac (2)", &metadata);
+
+        assert_eq!(display_name, "iPhone 17 Pro · RemoExample");
+    }
+
+    #[test]
+    fn falls_back_to_instance_name_without_metadata() {
+        let display_name = bonjour_display_name("Yi Jiang's Mac (2)", &ServiceMetadata::default());
+
+        assert_eq!(display_name, "Yi Jiang's Mac (2)");
     }
 }

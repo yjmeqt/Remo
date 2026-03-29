@@ -43,6 +43,46 @@ fn global() -> &'static std::sync::Mutex<RemoGlobal> {
     })
 }
 
+fn bonjour_txt_record() -> remo_bonjour::TxtRecord {
+    let mut txt = remo_bonjour::TxtRecord::new();
+
+    let device_info = remo_objc::run_on_main_sync(|| {
+        // SAFETY: run_on_main_sync ensures main-thread execution.
+        unsafe { remo_objc::get_device_info() }
+    });
+    let app_info = remo_objc::run_on_main_sync(|| {
+        // SAFETY: run_on_main_sync ensures main-thread execution.
+        unsafe { remo_objc::get_app_info() }
+    });
+
+    let entries = [
+        ("device_name", device_info.name),
+        ("device_model", device_info.model),
+        ("app_name", app_info.display_name),
+        ("bundle_id", app_info.bundle_id),
+        (
+            "platform",
+            if cfg!(target_os = "ios") {
+                if cfg!(target_env = "sim") {
+                    "simulator".to_string()
+                } else {
+                    "device".to_string()
+                }
+            } else {
+                "unknown".to_string()
+            },
+        ),
+    ];
+
+    for (key, value) in entries {
+        if !value.is_empty() {
+            let _ = txt.set(key, &value);
+        }
+    }
+
+    txt
+}
+
 fn start_server(port: u16) {
     if STARTED.swap(true, Ordering::SeqCst) {
         return;
@@ -86,8 +126,13 @@ fn start_server(port: u16) {
         lock.actual_port = Some(p);
 
         let _rt_guard = lock.runtime.enter();
-        match remo_bonjour::ServiceRegistration::register(remo_bonjour::SERVICE_TYPE, p, None, None)
-        {
+        let txt = bonjour_txt_record();
+        match remo_bonjour::ServiceRegistration::register(
+            remo_bonjour::SERVICE_TYPE,
+            p,
+            None,
+            Some(&txt),
+        ) {
             Ok(reg) => {
                 lock.bonjour_reg = Some(reg);
                 info!(port = p, "bonjour advertisement started");

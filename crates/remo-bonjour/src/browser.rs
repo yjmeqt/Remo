@@ -25,17 +25,85 @@ pub struct ServiceInfo {
     pub host: String,
     pub port: u16,
     pub interface_index: u32,
+    pub metadata: ServiceMetadata,
+}
+
+/// Optional metadata surfaced through Bonjour TXT records.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ServiceMetadata {
+    pub device_name: Option<String>,
+    pub device_model: Option<String>,
+    pub app_name: Option<String>,
+    pub bundle_id: Option<String>,
+    pub platform: Option<String>,
 }
 
 impl ServiceInfo {
     /// For simulators on localhost, resolve to a `SocketAddr`.
     pub fn socket_addr(&self) -> Option<std::net::SocketAddr> {
-        use std::net::ToSocketAddrs;
-        format!("{}:{}", self.host.trim_end_matches('.'), self.port)
-            .to_socket_addrs()
-            .ok()?
-            .next()
+        socket_addr_for_host(&self.host, self.port)
     }
+}
+
+pub fn socket_addr_for_host(host: &str, port: u16) -> Option<std::net::SocketAddr> {
+    use std::net::ToSocketAddrs;
+
+    let addrs: Vec<_> = format!("{}:{}", host.trim_end_matches('.'), port)
+        .to_socket_addrs()
+        .ok()?
+        .collect();
+
+    addrs
+        .iter()
+        .copied()
+        .find(|addr| addr.ip().is_loopback() && addr.is_ipv4())
+        .or_else(|| addrs.iter().copied().find(|addr| addr.ip().is_loopback()))
+        .or_else(|| addrs.into_iter().next())
+}
+
+fn parse_txt_metadata(txt_record: &[u8]) -> ServiceMetadata {
+    let mut metadata = ServiceMetadata::default();
+    let mut cursor = 0;
+
+    while cursor < txt_record.len() {
+        let len = usize::from(txt_record[cursor]);
+        cursor += 1;
+
+        if len == 0 || cursor + len > txt_record.len() {
+            break;
+        }
+
+        let entry = &txt_record[cursor..cursor + len];
+        cursor += len;
+
+        let Some(separator) = entry.iter().position(|byte| *byte == b'=') else {
+            continue;
+        };
+        let (key, value) = entry.split_at(separator);
+        let value = &value[1..];
+
+        let Ok(key) = std::str::from_utf8(key) else {
+            continue;
+        };
+        let Ok(value) = std::str::from_utf8(value) else {
+            continue;
+        };
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+
+        match key {
+            "device_name" => metadata.device_name = Some(value.to_string()),
+            "device_model" => metadata.device_model = Some(value.to_string()),
+            "app_name" => metadata.app_name = Some(value.to_string()),
+            "bundle_id" => metadata.bundle_id = Some(value.to_string()),
+            "platform" => metadata.platform = Some(value.to_string()),
+            _ => {}
+        }
+    }
+
+    metadata
 }
 
 /// Browses the local network for Bonjour services of a given type.
@@ -264,8 +332,8 @@ unsafe extern "C" fn resolve_callback(
     _fullname: *const std::os::raw::c_char,
     hosttarget: *const std::os::raw::c_char,
     port: u16,
-    _txt_len: u16,
-    _txt_record: *const std::os::raw::c_uchar,
+    txt_len: u16,
+    txt_record: *const std::os::raw::c_uchar,
     context: *mut std::ffi::c_void,
 ) {
     // SAFETY: context was created via Box::into_raw in browse_callback.
@@ -290,7 +358,57 @@ unsafe extern "C" fn resolve_callback(
         host,
         port,
         interface_index,
+        metadata: parse_txt_metadata(std::slice::from_raw_parts(
+            txt_record.cast(),
+            usize::from(txt_len),
+        )),
     };
 
     let _ = ctx.event_tx.try_send(BrowseEvent::Found(info));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_txt_metadata, socket_addr_for_host, ServiceMetadata};
+
+    fn encode_txt(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for (key, value) in entries {
+            let entry = format!("{key}={value}");
+            bytes.push(u8::try_from(entry.len()).expect("TXT entry should fit in one byte"));
+            bytes.extend_from_slice(entry.as_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    fn prefers_ipv4_loopback_for_localhost() {
+        let addr = socket_addr_for_host("localhost", 65425).expect("localhost should resolve");
+        assert!(addr.ip().is_loopback());
+        assert!(addr.is_ipv4());
+        assert_eq!(addr.port(), 65425);
+    }
+
+    #[test]
+    fn parses_supported_txt_metadata_fields() {
+        let txt = encode_txt(&[
+            ("device_name", "iPhone 17 Pro"),
+            ("app_name", "RemoExample"),
+            ("bundle_id", "com.example.remo"),
+            ("platform", "simulator"),
+        ]);
+
+        let metadata = parse_txt_metadata(&txt);
+
+        assert_eq!(
+            metadata,
+            ServiceMetadata {
+                device_name: Some("iPhone 17 Pro".into()),
+                device_model: None,
+                app_name: Some("RemoExample".into()),
+                bundle_id: Some("com.example.remo".into()),
+                platform: Some("simulator".into()),
+            }
+        );
+    }
 }
