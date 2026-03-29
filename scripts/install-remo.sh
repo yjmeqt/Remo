@@ -38,11 +38,17 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 if [[ "${VERSION}" == "latest" ]]; then
-  VERSION="$(gh release view --repo yjmeqt/Remo --json tagName -q .tagName | sed 's/^v//')"
+  if [[ "${BASE_URL}" == file://* ]]; then
+    RELEASE_PATH="${BASE_URL}/latest/download"
+  else
+    RELEASE_PATH="${BASE_URL%/download}/latest/download"
+  fi
+else
+  RELEASE_PATH="${BASE_URL}/v${VERSION}"
 fi
 
-ASSET_URL="${BASE_URL}/v${VERSION}/${ARTIFACT}"
-CHECKSUM_URL="${BASE_URL}/v${VERSION}/checksums.txt"
+ASSET_URL="${RELEASE_PATH}/${ARTIFACT}"
+CHECKSUM_URL="${RELEASE_PATH}/checksums.txt"
 
 echo "Downloading ${ASSET_URL}"
 curl -fsSL "${ASSET_URL}" -o "${TMP_DIR}/${ARTIFACT}"
