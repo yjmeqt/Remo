@@ -14,6 +14,7 @@ export function IPhoneFrame({ videoTime }: IPhoneFrameProps) {
   }, [videoTime]);
 
   const showVideo = videoTime >= 0;
+  const fallbackSrc = `${import.meta.env.BASE_URL}iphone-lock-screen.png`;
 
   return (
     <div className="flex flex-col items-center">
@@ -24,10 +25,18 @@ export function IPhoneFrame({ videoTime }: IPhoneFrameProps) {
       >
         {/* Screen content sits behind the frame bezel */}
         <div className="absolute left-[5.3%] right-[5.3%] top-[2.5%] bottom-[2.5%] rounded-[32px] overflow-hidden bg-black">
-          {/* TODO: preload poster frame to avoid blank flash before video loads */}
+          <img
+            src={fallbackSrc}
+            alt="Demo phone idle screen"
+            className="absolute inset-0 w-full h-full object-cover"
+            draggable={false}
+            style={{ opacity: showVideo ? 0 : 1 }}
+          />
+
           <video
             ref={videoRef}
-            className="w-full h-full object-cover"
+            data-testid="demo-phone-video"
+            className="absolute inset-0 w-full h-full object-cover"
             src={`${import.meta.env.BASE_URL}demo.mp4`}
             muted
             playsInline
