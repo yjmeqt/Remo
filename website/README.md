@@ -8,15 +8,16 @@ Interactive showcase demonstrating how AI agents use Remo to autonomously verify
 
 ```bash
 cd website
-npm install
-npm run dev      # http://localhost:5173/Remo/
+pnpm install
+pnpm dev      # http://localhost:5173/Remo/
 ```
 
 ## Build & Preview
 
 ```bash
-npm run build    # outputs to dist/
-npm run preview  # preview production build locally
+cd website
+pnpm build    # outputs to dist/
+pnpm preview  # preview production build locally
 ```
 
 ## Demo Video
