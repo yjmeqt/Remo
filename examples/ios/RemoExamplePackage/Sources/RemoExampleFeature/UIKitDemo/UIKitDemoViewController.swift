@@ -296,6 +296,7 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
 
     private func handleReset() -> UIKitDemoResponse {
         store.resetFeed()
+        store.updateVerticalOffset(0, for: .feed)
         feedPage?.apply(cards: store.cards(for: .feed), restoringOffset: 0)
         return UIKitDemoCapabilityContract.resetResponse()
     }
