@@ -10,11 +10,13 @@ Redesign the UIKit demo tab in `RemoExample`:
 - Items tab: inset-grouped list synced to `AppStore.items`, backed by `UIKitDemoItemsPageViewController`
 - Remove the SwiftUI `Items` tab from the root `TabView`
 - Bottom tab bar becomes: **Home · Grid · Activity · Settings**
+- All Grid capabilities use the `grid.*` prefix
 
 ## Goals
 
 - Show a richer UIKit demo with two distinct collection-view patterns in one screen.
 - Demonstrate live sync between a UIKit list and shared SwiftUI state (`AppStore.items`).
+- Demonstrate viewport introspection: `grid.visible` returns the currently visible items at any scroll position.
 - Keep the existing Remo capability contract intact; move item capabilities to global scope.
 
 ## Non-Goals
@@ -38,13 +40,15 @@ Tab strip remains horizontally scrollable (ready to add more tabs in the future)
 
 ### AppStore seed
 
-`AppStore.items` expands from 3 to 10 seed items so the Items page looks populated on first launch:
+`AppStore.items` expands from 3 to 20 seed items so the Items page has enough content to demonstrate scrolling and the `grid.visible` capability:
 
 ```swift
 public var items: [String] = [
     "Morning Standup", "Design Review", "Sprint Planning", "API Integration",
     "Code Review", "Remo Demo", "Release Notes", "User Testing",
-    "Launch Prep", "Post-mortem"
+    "Launch Prep", "Post-mortem", "Architecture Review", "Performance Audit",
+    "Accessibility Pass", "Localization Check", "Security Review", "Dependency Update",
+    "Changelog Draft", "Beta Feedback", "Stakeholder Sync", "Ship It"
 ]
 ```
 
@@ -52,7 +56,7 @@ public var items: [String] = [
 
 `items.add`, `items.remove`, `items.clear` move from `ListPage.body` (deleted) to `setupRemo` — globally registered at app launch. They continue to mutate `AppStore.items`.
 
-`uikit.items.append` remains Feed-only: appends a `UIKitDemoCard` to the card grid. It does not affect `AppStore.items`.
+`grid.feed.append` is Feed-only: appends a `UIKitDemoCard` to the card grid. It does not affect `AppStore.items`.
 
 ### UIKit sync path
 
@@ -72,10 +76,11 @@ func updateUIViewController(_ uiViewController: UIKitDemoViewController, context
 
 | File | Change |
 |------|--------|
-| `ContentView.swift` | Remove `ListPage` tab; move `items.*` capabilities to `setupRemo`; rename UIKit tab label to "Grid" |
-| `AppStore` (in `ContentView.swift`) | Expand `items` seed to 10 entries |
-| `UIKitDemoModels.swift` | Replace `UIKitDemoTab` cases `.featured/.recent/.saved` with `.feed/.items` |
-| `UIKitDemoViewController.swift` | Instantiate `UIKitDemoFeedPageViewController` or `UIKitDemoItemsPageViewController` per tab; add `updateItems(_:)` |
+| `ContentView.swift` | Remove `ListPage` tab; move `items.*` capabilities to `setupRemo`; rename UIKit tab label to "Grid" with icon `square.grid.2x2` |
+| `AppStore` (in `ContentView.swift`) | Expand `items` seed to 20 entries |
+| `UIKitDemoModels.swift` | Replace `UIKitDemoTab` cases `.featured/.recent/.saved` with `.feed/.items`; rename seed data |
+| `UIKitDemoViewController.swift` | Instantiate `UIKitDemoFeedPageViewController` or `UIKitDemoItemsPageViewController` per tab; add `updateItems(_:)`; rename all capability strings from `uikit.*` to `grid.*` |
+| `UIKitDemoCapabilityContract.swift` | Rename capability constants and parsers from `uikit.*` to `grid.*` |
 | `UIKitDemoScreen.swift` | Accept `AppStore`; implement `updateUIViewController` to push items |
 
 ### Files added
@@ -95,19 +100,56 @@ func updateUIViewController(_ uiViewController: UIKitDemoViewController, context
 
 | Capability | Scope | Effect |
 |-----------|-------|--------|
-| `uikit.tab.select` | UIKit tab visible | Select Feed (`"feed"`) or Items (`"items"`) by id or index |
-| `uikit.items.append` | UIKit tab visible | Append `UIKitDemoCard` to Feed tab grid |
-| `uikit.items.reset` | UIKit tab visible | Reset Feed tab cards to seed data (does not affect `AppStore.items`) |
-| `uikit.scroll.vertical` | UIKit tab visible | Scroll active page to top/middle/bottom |
-| `uikit.scroll.horizontal` | UIKit tab visible | Navigate between Feed and Items tabs |
+| `grid.tab.select` | Grid tab visible | Select `"feed"` or `"items"` by `id` or `index` |
+| `grid.feed.append` | Grid tab visible | Append `UIKitDemoCard` to Feed grid |
+| `grid.feed.reset` | Grid tab visible | Reset Feed cards to seed data (does not affect `AppStore.items`) |
+| `grid.scroll.vertical` | Grid tab visible | Scroll active page to `top`/`middle`/`bottom` |
+| `grid.scroll.horizontal` | Grid tab visible | Navigate between Feed ↔ Items tabs |
+| `grid.visible` | Grid tab visible | Return currently visible items in the active tab |
 | `items.add` | Global | Append string to `AppStore.items` (appears in Items tab) |
 | `items.remove` | Global | Remove string from `AppStore.items` |
 | `items.clear` | Global | Clear `AppStore.items` |
+
+### `grid.visible` response format
+
+For Items tab:
+```json
+{ "tab": "items", "visible": ["Morning Standup", "Design Review", "Sprint Planning"], "count": 8, "total": 20 }
+```
+
+For Feed tab:
+```json
+{ "tab": "feed", "visible": [{"id": "feed-1", "title": "Hero Spotlight"}], "count": 4, "total": 6 }
+```
+
+Implementation: `collectionView.indexPathsForVisibleItems` → look up identifiers from the diffable data source snapshot, sorted by index path.
+
+### Demo story
+
+```bash
+# 1. See what's visible on load
+remo call grid.visible '{}'
+# → items 1-8 visible, total 20
+
+# 2. Scroll to middle
+remo call grid.scroll.vertical '{"position":"middle"}'
+remo call grid.visible '{}'
+# → items 9-16 visible
+
+# 3. Add a new item and watch it appear
+remo call items.add '{"name":"Hot Fix"}'
+
+# 4. Switch to Feed tab
+remo call grid.tab.select '{"id":"feed"}'
+remo call grid.visible '{}'
+# → feed cards visible
+```
 
 ## Implementation Notes
 
 - `UIKitDemoItemsPageViewController` uses `UICollectionView.CellRegistration<UICollectionViewListCell, String>` with `UIHostingConfiguration` for the row content.
 - `UIKitDemoFeedPageViewController` uses `UICollectionView.CellRegistration<UICollectionViewCell, UIKitDemoCard>` with `UIHostingConfiguration` for the card content.
 - The parent VC calls `feedPage.apply(cards:)` or `itemsPage.apply(items:)` directly — no shared protocol needed since the two data types differ.
+- `grid.visible` calls `collectionView.indexPathsForVisibleItems` on the active page VC's collection view and maps index paths to identifiers from the snapshot.
 - Per-tab vertical scroll offset preservation remains in `UIKitDemoStore` unchanged.
 - The `CapabilityBridge` pattern in `UIKitDemoViewController` is unchanged.
