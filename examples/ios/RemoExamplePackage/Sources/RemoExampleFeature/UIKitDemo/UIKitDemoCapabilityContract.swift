@@ -229,7 +229,7 @@ enum UIKitDemoCapabilityContract {
     }
 
     static func resetResponse() -> UIKitDemoResponse {
-        .init(payload: ["status": .string("ok"), "tab": .string("feed")])
+        .init(payload: ["status": .string("ok"), "tab": .string(UIKitDemoTab.feed.id)])
     }
 
     static func visibleResponse(
