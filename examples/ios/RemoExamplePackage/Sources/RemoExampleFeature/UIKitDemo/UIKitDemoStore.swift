@@ -2,18 +2,18 @@ import Foundation
 import CoreGraphics
 
 final class UIKitDemoStore {
-    private let initialCardsByTab: [UIKitDemoTab: [UIKitDemoCard]]
-    private var cardsByTab: [UIKitDemoTab: [UIKitDemoCard]]
+    private let initialCards: [UIKitDemoCard]
+    private var feedCards: [UIKitDemoCard]
     private var verticalOffsets: [UIKitDemoTab: CGFloat]
 
     private(set) var selectedTab: UIKitDemoTab
 
     init(
-        seedCardsByTab: [UIKitDemoTab: [UIKitDemoCard]] = UIKitDemoSeed.cardsByTab,
+        seedCards: [UIKitDemoCard] = UIKitDemoSeed.cards(for: .feed),
         selectedTab: UIKitDemoTab = .feed
     ) {
-        self.initialCardsByTab = seedCardsByTab
-        self.cardsByTab = seedCardsByTab
+        self.initialCards = seedCards
+        self.feedCards = seedCards
         self.verticalOffsets = [:]
         self.selectedTab = selectedTab
     }
@@ -64,19 +64,8 @@ final class UIKitDemoStore {
         }
     }
 
-    func resolveTarget(_ target: UIKitDemoTabTarget) throws -> UIKitDemoTab? {
-        switch target {
-        case .active:
-            return selectedTab
-        case .all:
-            return nil
-        case .tab(let tab):
-            return tab
-        }
-    }
-
     func cards(for tab: UIKitDemoTab) -> [UIKitDemoCard] {
-        cardsByTab[tab] ?? []
+        tab == .feed ? feedCards : []
     }
 
     func count(for tab: UIKitDemoTab) -> Int {
@@ -84,31 +73,14 @@ final class UIKitDemoStore {
     }
 
     @discardableResult
-    func appendCard(title: String, subtitle: String?, tab: UIKitDemoTabTarget = .active) throws -> UIKitDemoTab {
-        guard let resolvedTab = try resolveTarget(tab) else {
-            throw UIKitDemoCapabilityError.missingTabIdentifier
-        }
-
-        let cards = cardsByTab[resolvedTab] ?? []
-        let suffix = cards.count + 1
-        let card = UIKitDemoCard(
-            id: "\(resolvedTab.id)-\(suffix)",
-            title: title,
-            subtitle: subtitle
-        )
-        cardsByTab[resolvedTab, default: []].append(card)
-        return resolvedTab
+    func appendCard(title: String, subtitle: String?) -> UIKitDemoTab {
+        let suffix = feedCards.count + 1
+        feedCards.append(UIKitDemoCard(id: "feed-\(suffix)", title: title, subtitle: subtitle))
+        return .feed
     }
 
-    func reset(tab target: UIKitDemoTabTarget) throws {
-        switch target {
-        case .all:
-            cardsByTab = initialCardsByTab
-        case .active:
-            cardsByTab[selectedTab] = initialCardsByTab[selectedTab] ?? []
-        case .tab(let tab):
-            cardsByTab[tab] = initialCardsByTab[tab] ?? []
-        }
+    func resetFeed() {
+        feedCards = initialCards
     }
 
     func updateVerticalOffset(_ value: CGFloat, for tab: UIKitDemoTab) {
