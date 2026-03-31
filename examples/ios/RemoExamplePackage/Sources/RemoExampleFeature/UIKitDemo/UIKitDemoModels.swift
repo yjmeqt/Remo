@@ -14,7 +14,7 @@ enum UIKitDemoTab: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-struct UIKitDemoCard: Identifiable, Equatable, Sendable {
+struct UIKitDemoCard: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let title: String
     let subtitle: String?
