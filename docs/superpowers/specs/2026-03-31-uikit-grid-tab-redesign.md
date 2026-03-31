@@ -82,6 +82,9 @@ func updateUIViewController(_ uiViewController: UIKitDemoViewController, context
 | `UIKitDemoViewController.swift` | Instantiate `UIKitDemoFeedPageViewController` or `UIKitDemoItemsPageViewController` per tab; add `updateItems(_:)`; rename all capability strings from `uikit.*` to `grid.*` |
 | `UIKitDemoCapabilityContract.swift` | Rename capability constants and parsers from `uikit.*` to `grid.*` |
 | `UIKitDemoScreen.swift` | Accept `AppStore`; implement `updateUIViewController` to push items |
+| `examples/ios/README.md` | Update tab bar description, capabilities table, and "Try It" e2e script for `grid.*` |
+| `README.md` (root) | Update `uikit.*` reference to `grid.*` |
+| `RemoExampleFeatureTests.swift` | Add unit tests for new tab structure and `grid.*` capabilities |
 
 ### Files added
 
@@ -95,6 +98,30 @@ func updateUIViewController(_ uiViewController: UIKitDemoViewController, context
 | File | Reason |
 |------|--------|
 | `UIKitDemoPageViewController.swift` | Replaced by the two purpose-built page VCs above |
+
+## Testing
+
+### Unit tests (`RemoExampleFeatureTests.swift`)
+
+- `gridTabCasesAreFeedAndItems` — `UIKitDemoTab.allCases` equals `[.feed, .items]`
+- `gridTabIDsMatchExpected` — `UIKitDemoTab.feed.id == "feed"`, `UIKitDemoTab.items.id == "items"`
+- `appStoreItemsSeedHasTwentyEntries` — `AppStore().items.count == 20`
+- `capabilityNamesUseGridPrefix` — `UIKitDemoCapabilityContract` exposes `grid.*` name constants; no `uikit.*` names present
+
+### e2e script (documented in `examples/ios/README.md`)
+
+The "Try It" section serves as the manual e2e script. It covers:
+
+1. Launch app, discover device: `remo devices`
+2. List capabilities: `remo list` — confirm `grid.*` present, no `uikit.*`
+3. Switch to Grid tab: `remo call navigate '{"route":"uikit"}'`
+4. Check visible items: `remo call grid.visible '{}'` — returns first ~8 of 20 items
+5. Scroll to bottom: `remo call grid.scroll.vertical '{"position":"bottom"}'`
+6. Check visible again — different slice of items
+7. Add an item: `remo call items.add '{"name":"Hot Fix"}'` — appears in Items tab
+8. Switch to Items tab: `remo call grid.tab.select '{"id":"items"}'`
+9. Switch to Feed: `remo call grid.tab.select '{"id":"feed"}'`
+10. Append a card: `remo call grid.feed.append '{"title":"Pinned","subtitle":"Added from CLI"}'`
 
 ## Capability Map
 
