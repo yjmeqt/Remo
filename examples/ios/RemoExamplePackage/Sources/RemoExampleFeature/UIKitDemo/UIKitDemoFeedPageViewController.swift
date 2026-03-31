@@ -97,7 +97,6 @@ final class UIKitDemoFeedPageViewController: UIViewController {
         case .bottom: y = maxOffset
         }
         collectionView.setContentOffset(.init(x: 0, y: y), animated: animated)
-        onVerticalOffsetChange?(y)
         return y
     }
 }
