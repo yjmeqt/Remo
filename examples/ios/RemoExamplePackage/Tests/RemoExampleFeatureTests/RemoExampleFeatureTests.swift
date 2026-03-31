@@ -25,3 +25,17 @@ private func requireSendable<T: Sendable>(_: T.Type) {}
 @Test func appStoreItemsSeedHasTwentyEntries() {
     #expect(AppStore().items.count == 20)
 }
+
+@Test func capabilityNamesUseGridPrefix() {
+    let names = [
+        UIKitDemoCapabilityContract.Names.tabSelect,
+        UIKitDemoCapabilityContract.Names.feedAppend,
+        UIKitDemoCapabilityContract.Names.feedReset,
+        UIKitDemoCapabilityContract.Names.scrollVertical,
+        UIKitDemoCapabilityContract.Names.scrollHorizontal,
+        UIKitDemoCapabilityContract.Names.visible,
+    ]
+    for name in names {
+        #expect(name.hasPrefix("grid."), "\(name) must start with 'grid.'")
+    }
+}
