@@ -68,9 +68,12 @@ import RemoSwift
 
 // The server starts automatically on first API access.
 // Simulator: random port (avoids collisions). Device: port 9930 (for USB tunnel).
+// Remo handlers execute on a background callback path and must remain Sendable.
 Remo.register("myFeature.toggle") { params in
     let enabled = params["enabled"] as? Bool ?? false
-    FeatureFlags.shared.myFeature = enabled
+    DispatchQueue.main.async {
+        FeatureFlags.shared.myFeature = enabled
+    }
     return ["toggled": enabled]
 }
 
@@ -86,10 +89,13 @@ Remo.unregister("myFeature.toggle")
 #import <RemoObjC/RMRemo.h>
 
 // The server starts automatically on first API access.
+// Objective-C handlers also run on Remo's background callback path.
 [RMRemo registerCapability:@"myFeature.toggle"
                    handler:^NSDictionary *(NSDictionary *params) {
     BOOL enabled = [params[@"enabled"] boolValue];
-    [FeatureFlags shared].myFeature = enabled;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [FeatureFlags shared].myFeature = enabled;
+    });
     return @{@"toggled": @(enabled)};
 }];
 
@@ -105,12 +111,20 @@ Capabilities can be unregistered dynamically — useful for page-level or condit
 ```swift
 #if DEBUG
 // Register when entering a screen
-Remo.register("detail.getInfo") { _ in ["item": itemName] }
+Remo.register("detail.getInfo") { _ in
+    ["item": itemName]
+}
 
 // Unregister when leaving
 Remo.unregister("detail.getInfo")
 #endif
 ```
+
+In Swift 6 strict concurrency projects, `Remo.register` requires a `@Sendable` handler. Do not assume main-thread or `MainActor` execution inside the callback. If the handler needs to mutate UI state, explicitly hand that work off to the main thread.
+
+The iOS example app includes a dedicated Grid tab that demonstrates this pattern in a `UIViewController` with nested scrolling, a horizontal pager, and `grid.*` capabilities wired through the same background callback contract.
+
+Objective-C callbacks follow the same background execution model, but Objective-C does not get Swift's `@Sendable` or actor-isolation compile-time checks. Treat `RMRemoCapabilityHandler` as a background callback and dispatch any UI or main-thread-only work explicitly.
 
 **Objective-C**
 
@@ -118,7 +132,11 @@ Remo.unregister("detail.getInfo")
 #if DEBUG
 // Register
 [RMRemo registerCapability:@"detail.getInfo" handler:^NSDictionary *(NSDictionary *params) {
-    return @{@"item": self.itemName};
+    __block NSString *itemName = @"";
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        itemName = self.itemName;
+    });
+    return @{@"item": itemName};
 }];
 
 // Unregister

@@ -1,6 +1,11 @@
 # RemoExample
 
-A demo iOS app showcasing the Remo SDK — register capabilities, invoke them from the CLI, and verify the UI.
+A demo iOS app showcasing the Remo SDK under Swift 6 strict concurrency. It registers background `@Sendable` capabilities, invokes them from the CLI, and verifies the UI.
+
+The app includes both SwiftUI and UIKit integration examples:
+- SwiftUI tabs that register page-scoped capabilities in `.task`
+- A dedicated **Grid** tab backed by a real `UIViewController`
+- A UIKit callback bridge that hands UI work back to the main queue explicitly
 
 ## Run
 
@@ -15,6 +20,8 @@ REMO_LOCAL=1 xcodebuild build -workspace RemoExample.xcworkspace -scheme RemoExa
 
 Build and run `RemoExample` scheme on a simulator or device.
 
+The app target is configured for Swift 6 with strict concurrency checking. `Remo.register` handlers therefore compile under the same contract expected by downstream SDK users: background callback execution with `@Sendable` closures.
+
 ## Capabilities
 
 The app registers capabilities at different scopes to demonstrate both global and page-level (dynamic) registration.
@@ -23,12 +30,15 @@ The app registers capabilities at different scopes to demonstrate both global an
 
 | Capability | Description | Example |
 |------------|-------------|---------|
-| `navigate` | Switch tab | `remo call navigate '{"route":"items"}'` |
+| `navigate` | Switch tab | `remo call navigate '{"route":"uikit"}'` |
 | `state.get` | Read state | `remo call state.get '{"key":"counter"}'` |
 | `state.set` | Write state | `remo call state.set '{"key":"username","value":"Alice"}'` |
 | `ui.toast` | Show toast | `remo call ui.toast '{"message":"Hello!"}'` |
 | `ui.confetti` | Trigger confetti | `remo call ui.confetti '{}'` |
 | `ui.setAccentColor` | Change theme | `remo call ui.setAccentColor '{"color":"purple"}'` |
+| `items.add` | Add item | `remo call items.add '{"name":"New"}'` |
+| `items.remove` | Remove item | `remo call items.remove '{"name":"Morning Standup"}'` |
+| `items.clear` | Clear all items | `remo call items.clear '{}'` |
 
 ### Home tab (available when Home is visible)
 
@@ -36,21 +46,18 @@ The app registers capabilities at different scopes to demonstrate both global an
 |------------|-------------|---------|
 | `counter.increment` | Bump counter | `remo call counter.increment '{"amount":5}'` |
 
-### Items tab (available when Items is visible)
+### Grid tab (available when Grid is visible)
 
 | Capability | Description | Example |
 |------------|-------------|---------|
-| `items.add` | Add item | `remo call items.add '{"name":"New"}'` |
-| `items.remove` | Remove item | `remo call items.remove '{"name":"Item A"}'` |
-| `items.clear` | Clear all | `remo call items.clear '{}'` |
+| `grid.tab.select` | Select Feed or Items tab | `remo call grid.tab.select '{"id":"items"}'` |
+| `grid.feed.append` | Append a card to the Feed grid | `remo call grid.feed.append '{"title":"Pinned","subtitle":"Added from CLI"}'` |
+| `grid.feed.reset` | Reset Feed cards to seed | `remo call grid.feed.reset '{}'` |
+| `grid.scroll.vertical` | Scroll active page | `remo call grid.scroll.vertical '{"position":"bottom"}'` |
+| `grid.scroll.horizontal` | Navigate between tabs | `remo call grid.scroll.horizontal '{"direction":"next"}'` |
+| `grid.visible` | Return currently visible items | `remo call grid.visible '{}'` |
 
-### Detail page (available when viewing an item)
-
-| Capability | Description | Example |
-|------------|-------------|---------|
-| `detail.getInfo` | Get current item | `remo call detail.getInfo '{}'` |
-
-> Page-level capabilities are registered with `Remo.register` in `.task` and unregistered with `Remo.unregister` in `.onDisappear`. Use `remo list` to see which capabilities are currently active.
+> The Grid tab uses the same background callback contract. Its `UIViewController` registers `grid.*` capabilities and synchronizes the tab strip, horizontal pager, and per-tab collection views by dispatching UIKit work back to the main queue.
 
 ## Try It
 
@@ -61,18 +68,30 @@ remo devices
 # 2. List currently available capabilities
 remo list -a <addr>
 
-# 3. Invoke a global capability
-remo call -a <addr> ui.toast '{"message":"Hello from CLI!"}'
+# 3. Navigate to Grid tab
+remo call -a <addr> navigate '{"route":"uikit"}'
 
-# 4. Navigate to Items tab, then list again — items.* capabilities appear
-remo call -a <addr> navigate '{"route":"items"}'
-remo list -a <addr>
+# 4. See which items are visible on load (~8 of 20)
+remo call -a <addr> grid.visible '{}'
 
-# 5. Navigate away — items.* capabilities disappear
-remo call -a <addr> navigate '{"route":"home"}'
-remo list -a <addr>
+# 5. Scroll to bottom — a different slice becomes visible
+remo call -a <addr> grid.scroll.vertical '{"position":"bottom"}'
+remo call -a <addr> grid.visible '{}'
 
-# 6. Take a screenshot to verify
+# 6. Add an item — it appears in the Items tab immediately
+remo call -a <addr> items.add '{"name":"Hot Fix"}'
+
+# 7. Switch to Items tab and verify
+remo call -a <addr> grid.tab.select '{"id":"items"}'
+remo call -a <addr> grid.visible '{}'
+
+# 8. Switch back to Feed
+remo call -a <addr> grid.tab.select '{"id":"feed"}'
+
+# 9. Append a card to the Feed grid
+remo call -a <addr> grid.feed.append '{"title":"Pinned","subtitle":"Added from CLI"}'
+
+# 10. Take a screenshot to verify
 remo screenshot -a <addr> -o screen.jpg
 ```
 
@@ -83,11 +102,10 @@ RemoExample.xcworkspace
 ├── RemoExample/                  # App shell (entry point only)
 ├── RemoExamplePackage/           # All feature code (SPM)
 │   └── Sources/RemoExampleFeature/
-│       └── ContentView.swift     # Views + capability registration
+│       ├── ContentView.swift     # SwiftUI views + global capability registration
+│       └── UIKitDemo/            # Grid tab: pager, feed, items list, and bridge
 ├── Config/                       # XCConfig build settings
 └── RemoExampleUITests/           # UI automation tests
 ```
 
-All capabilities are registered in `ContentView.swift`:
-- Global capabilities in `setupRemo()` (called once at app launch)
-- Page-level capabilities in each view's `.task` / `.onDisappear`
+Global capabilities (`items.add`, `items.remove`, `items.clear`, navigation, UI) are registered once at app launch in `setupRemo()`. The Grid tab (`UIKitDemoViewController`) registers `grid.*` capabilities while it is alive and unregisters them on `deinit`. `AppStore.items` is pushed into the Grid tab via `UIKitDemoScreen.updateUIViewController` whenever the array changes.
