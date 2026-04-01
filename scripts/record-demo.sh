@@ -254,28 +254,24 @@ ENTRY
 log "Phase 4: Running demo sequence..."
 
 echo ""
-echo -e "${BOLD}[Counter]${RESET}"
-demo_step "counter.increment" '{"amount":1}' 1.0
-demo_step "counter.increment" '{"amount":1}' 1.0
-demo_step "counter.increment" '{"amount":1}' 1.0
-demo_screenshot "01-counter"
-
-echo ""
 echo -e "${BOLD}[UI Effects]${RESET}"
 demo_step "ui.toast" '{"message":"Features verified ✓"}' 2.5
-demo_screenshot "02-toast"
+demo_screenshot "01-toast"
 demo_step "ui.setAccentColor" '{"color":"purple"}' 1.5
-demo_screenshot "03-accent"
+demo_screenshot "02-accent"
 demo_step "ui.confetti" '{}' 3.0
-demo_screenshot "04-confetti"
+demo_screenshot "03-confetti"
 
 echo ""
-echo -e "${BOLD}[Navigation & Items]${RESET}"
-demo_step "navigate" '{"route":"items"}' 1.5
-demo_screenshot "05-items-page"
-demo_step "items.add" '{"name":"Test Item 1"}' 1.0
-demo_step "items.add" '{"name":"Test Item 2"}' 1.0
-demo_screenshot "06-items-added"
+echo -e "${BOLD}[Grid]${RESET}"
+demo_step "navigate" '{"route":"uikit"}' 1.5
+demo_screenshot "04-grid"
+demo_step "grid.tab.select" '{"id":"items"}' 1.0
+demo_step "grid.scroll.vertical" '{"position":"bottom"}' 1.0
+demo_screenshot "05-scrolled"
+demo_step "grid.tab.select" '{"id":"feed"}' 1.0
+demo_step "grid.feed.append" '{"title":"Ship It","subtitle":"Live from Remo"}' 1.0
+demo_screenshot "06-feed-appended"
 
 # Close JSON array — strip trailing comma from last entry
 sed -i '' '$ s/,$//' "$TIMESTAMPS_FILE"

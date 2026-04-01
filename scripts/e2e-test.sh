@@ -286,6 +286,7 @@ fi
 # Phase 3: Setup Artifacts
 # ---------------------------------------------------------------------------
 
+rm -rf "$ARTIFACTS_DIR"
 mkdir -p "$ARTIFACTS_DIR"
 
 if [ "$OPT_RECORD" = true ]; then
@@ -311,47 +312,74 @@ assert_call "app_info" "__app_info" '{}' '.data.bundle_id == "com.remo.example"'
 
 maybe_screenshot "01-home-initial"
 
-# -- Counter --
-echo ""
-echo -e "${BOLD}[Counter]${RESET}"
-assert_call "counter.increment" "counter.increment" '{"amount":5}' '.data.amount == 5'
-sleep 0.3
-maybe_screenshot "02-counter-incremented"
-
 # -- UI Effects --
 echo ""
 echo -e "${BOLD}[UI Effects]${RESET}"
 assert_call "ui.toast" "ui.toast" '{"message":"E2E test toast"}' '.data.status == "ok"'
 sleep 1
-maybe_screenshot "03-toast"
+maybe_screenshot "02-toast"
+sleep 2  # wait for toast to dismiss (auto-hides after 3s)
 
 assert_call "ui.confetti" "ui.confetti" '{}' '.data.status == "ok"'
 sleep 0.5
-maybe_screenshot "04-confetti"
+maybe_screenshot "03-confetti"
 
 assert_call "ui.setAccentColor" "ui.setAccentColor" '{"color":"purple"}' '.data.color == "purple"'
 sleep 0.3
-maybe_screenshot "05-accent-purple"
+maybe_screenshot "04-accent-purple"
 
-# -- Navigation & Items --
+# -- Navigation --
 echo ""
-echo -e "${BOLD}[Navigation & Items]${RESET}"
-assert_call "navigate" "navigate" '{"route":"items"}' '.data.status == "ok"'
+echo -e "${BOLD}[Navigation]${RESET}"
+assert_call "navigate" "navigate" '{"route":"uikit"}' '.data.status == "ok"'
 sleep 1
+maybe_screenshot "05-uikit-grid"
 
-maybe_screenshot "06-items-default"
+# -- Grid: tab select --
+echo ""
+echo -e "${BOLD}[Grid]${RESET}"
+assert_call "grid.tab.select (by id)" "grid.tab.select" '{"id":"feed"}' '.data.status == "ok" and .data.selectedTab.id == "feed"'
+sleep 0.3
+assert_call "grid.tab.select (by index)" "grid.tab.select" '{"index":1}' '.data.status == "ok" and .data.selectedTab.id == "items"'
+sleep 0.3
+remo_call "grid.tab.select" '{"index":0}' >/dev/null; sleep 0.3
 
+assert_call "grid.feed.append" "grid.feed.append" '{"title":"E2E Card","subtitle":"automated"}' '.data.status == "ok" and .data.tab == "feed"'
+sleep 0.3
+maybe_screenshot "06-feed-appended"
+
+# Scroll tests on items tab — 20 items guarantees visible scroll range
+remo_call "grid.tab.select" '{"id":"items"}' >/dev/null; sleep 0.3
+assert_call "grid.scroll.vertical (bottom)" "grid.scroll.vertical" '{"position":"bottom"}' '.data.status == "ok" and .data.position == "bottom" and .data.tab == "items"'
+sleep 0.5
+maybe_screenshot "07-scrolled-bottom"
+
+assert_call "grid.scroll.vertical (top)" "grid.scroll.vertical" '{"position":"top"}' '.data.status == "ok" and .data.position == "top" and .data.tab == "items"'
+sleep 0.3
+remo_call "grid.tab.select" '{"id":"feed"}' >/dev/null; sleep 0.3
+
+assert_call "grid.feed.reset" "grid.feed.reset" '{}' '.data.status == "ok" and .data.tab == "feed"'
+sleep 0.3
+maybe_screenshot "08-feed-reset"
+
+assert_call "grid.scroll.horizontal (next)" "grid.scroll.horizontal" '{"direction":"next"}' '.data.status == "ok" and .data.selectedTab.id == "items"'
+sleep 0.3
+assert_call "grid.scroll.horizontal (previous)" "grid.scroll.horizontal" '{"direction":"previous"}' '.data.status == "ok" and .data.selectedTab.id == "feed"'
+sleep 0.3
+
+assert_call "grid.visible" "grid.visible" '{}' '.data.status == "ok" and .data.tab == "feed"'
+sleep 0.3
+maybe_screenshot "09-visible"
+
+# -- Items (global capability, backed by AppStore.items) --
+echo ""
+echo -e "${BOLD}[Items]${RESET}"
 assert_call "items.add" "items.add" '{"name":"Item X"}' '.data.status == "ok"'
 sleep 0.3
-maybe_screenshot "07-items-added"
-
 assert_call "items.remove" "items.remove" '{"name":"Item X"}' '.data.status == "ok"'
 sleep 0.3
-maybe_screenshot "08-items-removed"
-
 assert_call "items.clear" "items.clear" '{}' '.data.status == "ok"'
 sleep 0.3
-maybe_screenshot "09-items-cleared"
 
 # -- State round-trip --
 echo ""

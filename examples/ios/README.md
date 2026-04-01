@@ -40,12 +40,6 @@ The app registers capabilities at different scopes to demonstrate both global an
 | `items.remove` | Remove item | `remo call items.remove '{"name":"Morning Standup"}'` |
 | `items.clear` | Clear all items | `remo call items.clear '{}'` |
 
-### Home tab (available when Home is visible)
-
-| Capability | Description | Example |
-|------------|-------------|---------|
-| `counter.increment` | Bump counter | `remo call counter.increment '{"amount":5}'` |
-
 ### Grid tab (available when Grid is visible)
 
 | Capability | Description | Example |

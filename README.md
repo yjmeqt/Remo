@@ -17,9 +17,9 @@ Or watch the raw demo video: [remo_demo.mov](https://github.com/yjmeqt/Remo/rele
 ```
 # Agent writes code, triggers a build, then verifies via Remo:
 
-remo devices                                            # discover real devices (USB) & simulators
-remo call -a <addr> counter.increment '{"amount":5}'    # invoke a capability
-remo screenshot -a <addr> -o after.jpg                  # capture the result
+remo devices                                                          # discover real devices (USB) & simulators
+remo call -a <addr> grid.feed.append '{"title":"Ship It"}'            # invoke a capability
+remo screenshot -a <addr> -o after.jpg                                # capture the result
 remo mirror -a <addr> --save recording.mp4              # or record video for animation review
 # → Agent compares before/after screenshots to confirm the UI is correct
 ```
@@ -111,12 +111,12 @@ Capabilities can be unregistered dynamically — useful for page-level or condit
 ```swift
 #if DEBUG
 // Register when entering a screen
-Remo.register("detail.getInfo") { _ in
-    ["item": itemName]
+Remo.register("grid.visible") { _ in
+    ["items": visibleItems()]
 }
 
 // Unregister when leaving
-Remo.unregister("detail.getInfo")
+Remo.unregister("grid.visible")
 #endif
 ```
 
@@ -131,16 +131,16 @@ Objective-C callbacks follow the same background execution model, but Objective-
 ```objc
 #if DEBUG
 // Register
-[RMRemo registerCapability:@"detail.getInfo" handler:^NSDictionary *(NSDictionary *params) {
-    __block NSString *itemName = @"";
+[RMRemo registerCapability:@"grid.visible" handler:^NSDictionary *(NSDictionary *params) {
+    __block NSArray *items = @[];
     dispatch_sync(dispatch_get_main_queue(), ^{
-        itemName = self.itemName;
+        items = [self visibleItems];
     });
-    return @{@"item": itemName};
+    return @{@"items": items};
 }];
 
 // Unregister
-[RMRemo unregisterCapability:@"detail.getInfo"];
+[RMRemo unregisterCapability:@"grid.visible"];
 #endif
 ```
 
