@@ -153,11 +153,13 @@ Remo.register("user.set") { (__params: [String: Any]) -> [String: Any] in
 
 ## Lifecycle Management
 
-Capabilities are scoped to view visibility — only the top-visible screen's capabilities are registered.
+Capabilities are scoped to view visibility — only the top-visible screen's capabilities are registered. All supporting types are `#if DEBUG` only — nothing leaks into release builds.
 
-### SwiftUI — `.remo()` view modifier
+**Design principle:** Like `#Preview`, every Remo artifact vanishes completely in release. No protocols, no view modifier extensions, no structs — the macro wraps everything in `#if DEBUG` at the expansion site.
 
-A macro-powered view modifier that auto-registers on appear and auto-unregisters on disappear:
+### SwiftUI — macro-powered modifier
+
+The `#remo` macro expands to a `ViewModifier` in debug and `EmptyModifier()` in release:
 
 ```swift
 struct HomeView: View {
@@ -165,11 +167,11 @@ struct HomeView: View {
 
     var body: some View {
         VStack { ... }
-            .remo(#remo("counter.increment") { (amount: Int = 1) in
+            .modifier(#remo("counter.increment") { (amount: Int = 1) in
                 store.counter += amount
                 return ["status": "ok"]
             })
-            .remo(#remo("counter.reset") {
+            .modifier(#remo("counter.reset") {
                 store.counter = 0
                 return ["status": "ok"]
             })
@@ -177,115 +179,126 @@ struct HomeView: View {
 }
 ```
 
-The `#remo(...)` macro returns a `RemoCapability` value (name + handler with typed param extraction). The `.remo()` view modifier manages the lifecycle.
-
 **Macro expansion:**
 
 ```swift
-// #remo("counter.increment") { (amount: Int = 1) in ... }
-// expands to:
-{
+// Source:
+.modifier(#remo("counter.increment") { (amount: Int = 1) in
+    store.counter += amount
+    return ["status": "ok"]
+})
+
+// Expands to (all builds):
+.modifier({
     #if DEBUG
-    RemoCapability(name: "counter.increment") { (__params: [String: Any]) -> [String: Any] in
+    _RemoModifier(name: "counter.increment") { (__params: [String: Any]) -> [String: Any] in
         let amount = __params["amount"] as? Int ?? 1
         store.counter += amount
         return ["status": "ok"]
     }
     #else
-    RemoCapability.noop
+    EmptyModifier()
     #endif
-}()
+}())
 ```
 
-**View modifier (provided by RemoSwift, not macro-generated):**
+`_RemoModifier` is a `#if DEBUG`-only `ViewModifier` that registers on appear and unregisters on disappear. `EmptyModifier` is SwiftUI's built-in no-op — zero cost, already exists.
+
+**`_RemoModifier` (debug only, provided by RemoSwift):**
 
 ```swift
 #if DEBUG
-extension View {
-    public func remo(_ capability: RemoCapability) -> some View {
-        self
-            .onAppear { Remo.register(capability.name, handler: capability.handler) }
-            .onDisappear { Remo.unregister(capability.name) }
+internal struct _RemoModifier: ViewModifier {
+    let name: String
+    let handler: ([String: Any]) -> [String: Any]
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { Remo.register(name, handler: handler) }
+            .onDisappear { Remo.unregister(name) }
     }
-}
-#else
-extension View {
-    @inlinable
-    public func remo(_ capability: RemoCapability) -> some View { self }
 }
 #endif
 ```
 
-### UIKit — `RemoCapable` protocol
+### UIKit — macro with `scopedTo:`
 
-A protocol that declaratively defines a VC's capabilities. Registration/unregistration is tied to `viewDidAppear`/`viewDidDisappear` automatically via one-time method swizzling (debug builds only).
+The `#remo` macro with a `scopedTo:` parameter auto-manages registration tied to VC visibility. No protocol conformance needed:
 
 ```swift
-class DetailViewController: UIViewController, RemoCapable {
+class DetailViewController: UIViewController {
     var item: String = ""
 
-    var remoCapabilities: [RemoCapability] {
-        [
-            #remo("detail.getInfo") { [weak self] in
-                return ["item": self?.item ?? ""]
-            },
-            #remo("detail.setTitle") { [weak self] (title: String) in
-                self?.title = title
-                return ["status": "ok"]
-            }
-        ]
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
+        #remo("detail.getInfo", scopedTo: self) { [weak self] in
+            return ["item": self?.item ?? ""]
+        }
+        #remo("detail.setTitle", scopedTo: self) { [weak self] (title: String) in
+            self?.title = title
+            return ["status": "ok"]
+        }
     }
+    // No viewDidDisappear override needed — auto-unregistration handled
 }
 // Push DetailVC → capabilities registered
 // Push another VC on top → capabilities unregistered
 // Pop back to DetailVC → capabilities re-registered
 ```
 
-**How `RemoCapable` works:**
+**Macro expansion:**
 
-1. Protocol declares `var remoCapabilities: [RemoCapability]`
-2. On first conformance (via `+load` or `initialize`), swizzles `viewDidAppear(_:)` and `viewDidDisappear(_:)` on `UIViewController`
-3. Swizzled `viewDidAppear`: if `self` conforms to `RemoCapable`, register all capabilities
-4. Swizzled `viewDidDisappear`: if `self` conforms to `RemoCapable`, unregister all capabilities
-5. All swizzling and registration is gated behind `#if DEBUG` — zero footprint in release
+```swift
+// Source:
+#remo("detail.getInfo", scopedTo: self) { [weak self] in
+    return ["item": self?.item ?? ""]
+}
+
+// Expands to (all builds):
+{
+    #if DEBUG
+    _RemoLifecycle.registerScoped(owner: self, name: "detail.getInfo") {
+        (__params: [String: Any]) -> [String: Any] in
+        return ["item": self?.item ?? ""]
+    }
+    #endif
+}()
+```
+
+**`_RemoLifecycle` (debug only, provided by RemoSwift):**
 
 ```swift
 #if DEBUG
-public protocol RemoCapable: UIViewController {
-    var remoCapabilities: [RemoCapability] { get }
-}
-#else
-public protocol RemoCapable: UIViewController {
-    // Empty in release — no swizzling, no registration
+internal enum _RemoLifecycle {
+    /// Register a capability scoped to a UIViewController's visibility.
+    ///
+    /// On first call, swizzles `viewDidDisappear(_:)` on UIViewController (once).
+    /// Uses associated objects to track registered capability names per VC instance.
+    /// When the VC disappears, all its scoped capabilities are unregistered.
+    /// When it reappears and `viewDidAppear` calls `#remo` again, they re-register.
+    static func registerScoped(
+        owner: UIViewController,
+        name: String,
+        handler: @escaping ([String: Any]) -> [String: Any]
+    ) {
+        swizzleViewDidDisappearOnce()
+        trackCapability(name, on: owner)
+        Remo.register(name, handler: handler)
+    }
 }
 #endif
 ```
 
 ### Global capabilities (no lifecycle)
 
-For app-wide capabilities that should always be available, use the block form or direct `#remo` calls at setup time — no view modifier or protocol needed:
+For app-wide capabilities that should always be available, use the block form or direct `#remo` calls at setup time:
 
 ```swift
 // In app startup
 #remo {
     Remo.register("navigate") { ... }
     Remo.register("state.get") { ... }
-}
-```
-
-### `RemoCapability` struct
-
-Shared value type used by both SwiftUI and UIKit:
-
-```swift
-public struct RemoCapability {
-    public let name: String
-    public let handler: ([String: Any]) -> [String: Any]
-
-    #if !DEBUG
-    /// No-op capability for release builds (macro expands to this)
-    public static let noop = RemoCapability(name: "", handler: { _ in [:] })
-    #endif
 }
 ```
 
@@ -297,9 +310,8 @@ swift/RemoSwift/
 ├── Sources/
 │   ├── RemoSwift/
 │   │   ├── Remo.swift                     # Existing (unchanged)
-│   │   ├── RemoCapability.swift           # RemoCapability struct
-│   │   ├── RemoViewModifier.swift         # SwiftUI .remo() view modifier
-│   │   └── RemoCapable.swift              # UIKit RemoCapable protocol + swizzling
+│   │   ├── _RemoModifier.swift            # #if DEBUG ViewModifier for SwiftUI
+│   │   └── _RemoLifecycle.swift           # #if DEBUG VC swizzling for UIKit
 │   ├── RemoMacros/                        # Public macro declarations
 │   │   └── RemoMacros.swift               # @freestanding(expression) macro decl
 │   └── RemoMacrosPlugin/                  # Compiler plugin (host-side)
@@ -324,9 +336,10 @@ swift/RemoSwift/
 
 ## Platform Support
 
-- **SwiftUI:** `.remo()` view modifier for visibility-scoped capabilities, `#remo` block form for global setup
-- **UIKit:** `RemoCapable` protocol for visibility-scoped capabilities, `#remo` block form for global setup
-- **Both:** `#remo` macro provides typed params and dead-code elimination in all contexts
+- **SwiftUI:** `.modifier(#remo(...))` for visibility-scoped capabilities, `#remo` block form for global setup
+- **UIKit:** `#remo(..., scopedTo: self)` for visibility-scoped capabilities, `#remo` block form for global setup
+- **Both:** `#remo` macro provides typed params, dead-code elimination, and zero release footprint in all contexts
+- **Nothing leaks:** All internal types (`_RemoModifier`, `_RemoLifecycle`) are `#if DEBUG` only
 
 ## Constraints
 
@@ -344,8 +357,8 @@ swift/RemoSwift/
 - Unsupported types produce compile-time diagnostics
 
 **Integration tests:**
-- Update example app to use `#remo` macro, `.remo()` modifier, and `RemoCapable` protocol
+- Update example app to use `#remo` macro and `.modifier(#remo(...))` pattern
 - Verify Debug build registers/unregisters capabilities correctly
-- Verify Release build compiles with zero Remo footprint
+- Verify Release build compiles with zero Remo footprint (no symbols from `_RemoModifier` or `_RemoLifecycle`)
 - Verify SwiftUI view appear/disappear triggers register/unregister
-- Verify UIKit VC push/pop triggers register/unregister via `RemoCapable`
+- Verify UIKit VC push/pop triggers register/unregister via `scopedTo:` pattern
