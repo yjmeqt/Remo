@@ -27,7 +27,7 @@ internal enum _RemoLifecycle {
         if !names.contains(name) {
             names.append(name)
         }
-        objc_setAssociatedObject(owner, &_namesKey, names, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(owner, &_namesKey, names, .OBJC_ASSOCIATION_RETAIN)
         Remo.register(name, handler: handler)
     }
 
@@ -55,7 +55,7 @@ extension UIViewController {
         guard let names = objc_getAssociatedObject(self, &_RemoLifecycle._namesKey) as? [String],
               !names.isEmpty else { return }
         names.forEach { Remo.unregister($0) }
-        objc_setAssociatedObject(self, &_RemoLifecycle._namesKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(self, &_RemoLifecycle._namesKey, nil, .OBJC_ASSOCIATION_RETAIN)
     }
 }
 #endif // DEBUG && canImport(UIKit)

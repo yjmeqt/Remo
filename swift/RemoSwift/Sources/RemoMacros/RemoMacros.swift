@@ -19,7 +19,7 @@
 @freestanding(expression)
 public macro remo(
     _ name: String,
-    _ handler: @escaping ([String: Any]) -> [String: Any]
+    _ handler: @escaping (RemoParams) -> [String: Any]
 ) = #externalMacro(module: "RemoMacrosPlugin", type: "RemoInlineMacro")
 
 /// Register a UIKit-scoped capability (debug only). Auto-unregisters on `viewDidDisappear`.
@@ -36,7 +36,7 @@ public macro remo(
 public macro remo(
     _ name: String,
     scopedTo owner: AnyObject,
-    _ handler: @escaping ([String: Any]) -> [String: Any]
+    _ handler: @escaping (RemoParams) -> [String: Any]
 ) = #externalMacro(module: "RemoMacrosPlugin", type: "RemoScopedMacro")
 
 /// Wrap a block of Remo registrations so they are stripped in release builds.

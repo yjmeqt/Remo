@@ -27,4 +27,12 @@ public struct RemoParams {
         dict[key] as? T
     }
 }
+#else
+/// Release stub — exists only for macro call-site type-checking.
+/// The `#remo` macro expansion is empty in release builds so this is never called.
+public struct RemoParams {
+    public init(_ dict: [String: Any]) {}
+    public subscript<T>(_ key: String, default defaultValue: T) -> T { defaultValue }
+    public subscript<T>(_ key: String) -> T? { nil }
+}
 #endif

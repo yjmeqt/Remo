@@ -115,7 +115,7 @@ public final class Remo {
     /// When the view disappears, SwiftUI cancels the task, this function returns,
     /// and all named capabilities are unregistered.
     public static func keepAlive(_ names: String...) async {
-        try? await Task.sleep(nanoseconds: .max)
+        try? await Task.sleep(nanoseconds: .max) // CancellationError intentionally swallowed — execution continues to unregister
         names.forEach { unregister($0) }
     }
 }

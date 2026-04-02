@@ -3,6 +3,9 @@ import SwiftSyntaxMacrosTestSupport
 import XCTest
 @testable import RemoMacrosPlugin
 
+// Note: Uses XCTest (not Swift Testing) because SwiftSyntaxMacrosTestSupport
+// only provides assertMacroExpansion as an XCTest-style API.
+
 let testMacros: [String: Macro.Type] = ["remo": RemoInlineMacro.self]
 let testMacrosScoped: [String: Macro.Type] = ["remo": RemoScopedMacro.self]
 let testMacrosBlock: [String: Macro.Type] = ["remo": RemoBlockMacro.self]
