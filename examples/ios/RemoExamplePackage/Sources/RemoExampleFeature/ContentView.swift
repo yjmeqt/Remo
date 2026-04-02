@@ -277,14 +277,12 @@ struct HomeView: View {
             .padding()
             .navigationTitle("Remo")
             .task {
-                logged(store: store, "counter.increment") { params in
-                    let amount = params["amount"] as? Int ?? 1
+                #remo("counter.increment") { params in
+                    let amount: Int = params["amount", default: 1]
                     DispatchQueue.main.async { store.counter += amount }
                     return ["status": "ok", "amount": amount]
                 }
-            }
-            .onDisappear {
-                Remo.unregister("counter.increment")
+                await Remo.keepAlive("counter.increment")
             }
         }
     }
@@ -328,6 +326,97 @@ struct ConnectionBadge: View {
         .background(.ultraThinMaterial, in: Capsule())
     }
 }
+
+// MARK: - Items
+
+struct ListPage: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if store.items.isEmpty {
+                    ContentUnavailableView(
+                        "No Items",
+                        systemImage: "tray",
+                        description: Text("Add items remotely:\nremo call items.add '{\"name\": \"Hello\"}'")
+                    )
+                } else {
+                    List {
+                        ForEach(store.items, id: \.self) { item in
+                            NavigationLink(item) {
+                                DetailPage(item: item)
+                            }
+                        }
+                        .onDelete { indexSet in
+                            withAnimation { store.items.remove(atOffsets: indexSet) }
+                        }
+                    }
+                    .animation(.default, value: store.items)
+                }
+            }
+            .navigationTitle("Items (\(store.items.count))")
+            .toolbar {
+                if !store.items.isEmpty {
+                    Button("Clear") {
+                        withAnimation { store.items.removeAll() }
+                    }
+                }
+            }
+            .task {
+                #remo("items.add") { params in
+                    let name: String = params["name", default: "New Item"]
+                    DispatchQueue.main.async {
+                        withAnimation { store.items.append(name) }
+                    }
+                    return ["status": "ok", "name": name]
+                }
+                #remo("items.remove") { params in
+                    let name: String = params["name", default: ""]
+                    DispatchQueue.main.async {
+                        withAnimation {
+                            if let idx = store.items.firstIndex(of: name) {
+                                store.items.remove(at: idx)
+                            }
+                        }
+                    }
+                    return ["status": "ok", "name": name]
+                }
+                #remo("items.clear") { _ in
+                    DispatchQueue.main.async {
+                        withAnimation { store.items.removeAll() }
+                    }
+                    return ["status": "ok"]
+                }
+                await Remo.keepAlive("items.add", "items.remove", "items.clear")
+            }
+        }
+    }
+}
+
+struct DetailPage: View {
+    let item: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "cube.box")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+            Text(item)
+                .font(.title)
+            Text("Detail view for \(item)")
+                .foregroundStyle(.secondary)
+        }
+        .navigationTitle(item)
+        .task {
+            #remo("detail.getInfo") { [item] _ in
+                return ["item": item]
+            }
+            await Remo.keepAlive("detail.getInfo")
+        }
+    }
+}
+
 
 // MARK: - Activity Log
 
