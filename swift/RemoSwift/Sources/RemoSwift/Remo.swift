@@ -1,3 +1,5 @@
+@_exported import RemoMacros
+
 import Foundation
 
 // MARK: - Public API
@@ -100,6 +102,22 @@ public final class Remo {
         }
         return arr
     }
+
+    /// Sleep until the current Swift Task is cancelled, then unregister named capabilities.
+    ///
+    /// Call at the end of a SwiftUI `.task {}` block after all `#remo` registrations:
+    /// ```swift
+    /// .task {
+    ///     #remo("my.capability") { params in ... }
+    ///     await Remo.keepAlive("my.capability")
+    /// }
+    /// ```
+    /// When the view disappears, SwiftUI cancels the task, this function returns,
+    /// and all named capabilities are unregistered.
+    public static func keepAlive(_ names: String...) async {
+        try? await Task.sleep(nanoseconds: .max)
+        names.forEach { unregister($0) }
+    }
 }
 
 // MARK: - Internals
@@ -156,6 +174,8 @@ public final class Remo {
     @discardableResult
     public static func unregister(_ name: String) -> Bool { false }
     public static func listCapabilities() -> [String] { [] }
+    @inlinable
+    public static func keepAlive(_ names: String...) async {}
 }
 
 #endif
