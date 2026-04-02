@@ -16,12 +16,14 @@ struct RemoMacrosPlugin: CompilerPlugin {
 
 enum RemoMacroError: Error, CustomStringConvertible {
     case missingNameArgument
+    case missingScopedToArgument
     case missingHandler
     case missingBody
 
     var description: String {
         switch self {
         case .missingNameArgument: return "#remo requires a string literal as its first argument"
+        case .missingScopedToArgument: return "#remo scoped form requires a `scopedTo:` argument"
         case .missingHandler: return "#remo requires a trailing closure handler"
         case .missingBody: return "#remo { } requires a trailing closure body"
         }
@@ -101,7 +103,7 @@ public struct RemoScopedMacro: ExpressionMacro {
         let body = handler.statements
 
         guard let ownerArg = node.arguments.first(where: { $0.label?.text == "scopedTo" }) else {
-            throw RemoMacroError.missingNameArgument
+            throw RemoMacroError.missingScopedToArgument
         }
         let ownerExpr = ownerArg.expression
 
