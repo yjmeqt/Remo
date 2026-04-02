@@ -1,25 +1,36 @@
 // swift-tools-version: 5.9
 import PackageDescription
+import CompilerPluginSupport
 
 let package = Package(
     name: "RemoSwift",
-    platforms: [.iOS(.v13)],
+    platforms: [.iOS(.v13), .macOS(.v10_15)],
     products: [
         .library(name: "RemoSwift", targets: ["RemoSwift"]),
         .library(name: "RemoObjC", targets: ["RemoObjC"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
+    ],
     targets: [
-        // The Rust static library packaged as an XCFramework.
         .binaryTarget(
             name: "CRemo",
             path: "../RemoSDK.xcframework"
         ),
-        // CRemo is imported only in DEBUG builds (#if DEBUG in Remo.swift).
-        // SPM still requires the binary for dependency resolution,
-        // but unreferenced symbols are stripped by the linker in Release.
+        .macro(
+            name: "RemoMacrosPlugin",
+            dependencies: [
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+            ]
+        ),
+        .target(
+            name: "RemoMacros",
+            dependencies: ["RemoMacrosPlugin"]
+        ),
         .target(
             name: "RemoSwift",
-            dependencies: ["CRemo"],
+            dependencies: ["CRemo", "RemoMacros"],
             path: "Sources/RemoSwift",
             linkerSettings: [
                 .linkedLibrary("c++"),
@@ -40,6 +51,14 @@ let package = Package(
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("VideoToolbox"),
                 .linkedFramework("CoreFoundation"),
+            ]
+        ),
+        .testTarget(
+            name: "RemoMacrosTests",
+            dependencies: [
+                "RemoMacros",
+                "RemoMacrosPlugin",
+                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
             ]
         ),
     ]
