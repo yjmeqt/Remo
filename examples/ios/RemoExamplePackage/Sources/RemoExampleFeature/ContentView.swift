@@ -17,7 +17,13 @@ struct LogEntry: Identifiable {
 public final class AppStore: @unchecked Sendable {
     public var counter: Int = 0
     public var username: String = "Guest"
-    public var items: [String] = ["Item A", "Item B", "Item C"]
+    public var items: [String] = [
+        "Morning Standup", "Design Review", "Sprint Planning", "API Integration",
+        "Code Review", "Remo Demo", "Release Notes", "User Testing",
+        "Launch Prep", "Post-mortem", "Architecture Review", "Performance Audit",
+        "Accessibility Pass", "Localization Check", "Security Review", "Dependency Update",
+        "Changelog Draft", "Beta Feedback", "Stakeholder Sync", "Ship It",
+    ]
     public var currentRoute: String = "home"
 
     var accentColorName: String = "blue"
@@ -57,56 +63,14 @@ public final class AppStore: @unchecked Sendable {
     }
 }
 
-// MARK: - Page-Level Capability Helpers
-
-/// Register page-level capabilities from a non-isolated context.
-/// Avoids Swift 6 MainActor isolation issues when Remo handlers
-/// are invoked from background threads.
-func registerHomeCapabilities(store: AppStore) {
-    Remo.register("counter.increment") { params in
-        let amount = params["amount"] as? Int ?? 1
-        DispatchQueue.main.async { store.counter += amount }
-        return ["status": "ok", "amount": amount]
-    }
-}
-
-func registerItemsCapabilities(store: AppStore) {
-    Remo.register("items.add") { params in
-        let name = params["name"] as? String ?? "New Item"
-        DispatchQueue.main.async {
-            withAnimation { store.items.append(name) }
-        }
-        return ["status": "ok", "name": name]
-    }
-    Remo.register("items.remove") { params in
-        let name = params["name"] as? String ?? ""
-        DispatchQueue.main.async {
-            withAnimation {
-                if let idx = store.items.firstIndex(of: name) {
-                    store.items.remove(at: idx)
-                }
-            }
-        }
-        return ["status": "ok", "name": name]
-    }
-    Remo.register("items.clear") { _ in
-        DispatchQueue.main.async {
-            withAnimation { store.items.removeAll() }
-        }
-        return ["status": "ok"]
-    }
-}
-
-func registerDetailCapabilities(item: String) {
-    Remo.register("detail.getInfo") { _ in
-        return ["item": item]
-    }
-}
-
 // MARK: - Remo Setup
 
-/// Helper that wraps a capability handler with activity logging.
-private func logged(store: AppStore, _ name: String, handler: @escaping ([String: Any]) -> [String: Any]) {
+/// Helper that wraps a background capability handler with activity logging.
+private func logged(
+    store: AppStore,
+    _ name: String,
+    handler: @Sendable @escaping ([String: Any]) -> [String: Any]
+) {
     Remo.register(name) { params in
         let paramsJSON = (try? JSONSerialization.data(withJSONObject: params))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
@@ -190,6 +154,33 @@ public func setupRemo(store: AppStore) {
         }
         return ["status": "ok", "color": color]
     }
+
+    logged(store: store, "items.add") { params in
+        let name = params["name"] as? String ?? "New Item"
+        DispatchQueue.main.async {
+            withAnimation { store.items.append(name) }
+        }
+        return ["status": "ok", "name": name]
+    }
+
+    logged(store: store, "items.remove") { params in
+        let name = params["name"] as? String ?? ""
+        DispatchQueue.main.async {
+            withAnimation {
+                if let idx = store.items.firstIndex(of: name) {
+                    store.items.remove(at: idx)
+                }
+            }
+        }
+        return ["status": "ok", "name": name]
+    }
+
+    logged(store: store, "items.clear") { _ in
+        DispatchQueue.main.async {
+            withAnimation { store.items.removeAll() }
+        }
+        return ["status": "ok"]
+    }
 }
 
 // MARK: - Root View
@@ -205,9 +196,9 @@ public struct ContentView: View {
                     .tag("home")
                     .tabItem { Label("Home", systemImage: "house") }
 
-                ListPage()
-                    .tag("items")
-                    .tabItem { Label("Items", systemImage: "list.bullet") }
+                UIKitDemoScreen(store: store)
+                    .tag("uikit")
+                    .tabItem { Label("Grid", systemImage: "square.grid.2x2") }
 
                 ActivityLogView()
                     .tag("activity")
@@ -286,21 +277,15 @@ struct HomeView: View {
             .padding()
             .navigationTitle("Remo")
             .task {
-                registerHomeCapabilities(store: store)
+                logged(store: store, "counter.increment") { params in
+                    let amount = params["amount"] as? Int ?? 1
+                    DispatchQueue.main.async { store.counter += amount }
+                    return ["status": "ok", "amount": amount]
+                }
             }
             .onDisappear {
                 Remo.unregister("counter.increment")
             }
-        }
-        .onAppear {
-            logged(store: store, "counter.increment") { params in
-                let amount = params["amount"] as? Int ?? 1
-                DispatchQueue.main.async { store.counter += amount }
-                return ["status": "ok", "amount": amount]
-            }
-        }
-        .onDisappear {
-            Remo.unregister("counter.increment")
         }
     }
 }
@@ -341,112 +326,6 @@ struct ConnectionBadge: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial, in: Capsule())
-    }
-}
-
-// MARK: - Items
-
-struct ListPage: View {
-    @Environment(AppStore.self) private var store
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if store.items.isEmpty {
-                    ContentUnavailableView(
-                        "No Items",
-                        systemImage: "tray",
-                        description: Text("Add items remotely:\nremo call items.add '{\"name\": \"Hello\"}'")
-                    )
-                } else {
-                    List {
-                        ForEach(store.items, id: \.self) { item in
-                            NavigationLink(item) {
-                                DetailPage(item: item)
-                            }
-                        }
-                        .onDelete { indexSet in
-                            withAnimation { store.items.remove(atOffsets: indexSet) }
-                        }
-                    }
-                    .animation(.default, value: store.items)
-                }
-            }
-            .navigationTitle("Items (\(store.items.count))")
-            .toolbar {
-                if !store.items.isEmpty {
-                    Button("Clear") {
-                        withAnimation { store.items.removeAll() }
-                    }
-                }
-            }
-            .task {
-                registerItemsCapabilities(store: store)
-            }
-            .onDisappear {
-                Remo.unregister("items.add")
-                Remo.unregister("items.remove")
-                Remo.unregister("items.clear")
-            }
-        }
-        .onAppear {
-            logged(store: store, "items.add") { params in
-                let name = params["name"] as? String ?? "New Item"
-                DispatchQueue.main.async {
-                    withAnimation { store.items.append(name) }
-                }
-                return ["status": "ok", "name": name]
-            }
-
-            logged(store: store, "items.remove") { params in
-                let index = params["index"] as? Int
-                DispatchQueue.main.async {
-                    withAnimation {
-                        if let index, index >= 0, index < store.items.count {
-                            store.items.remove(at: index)
-                        } else if !store.items.isEmpty {
-                            store.items.removeLast()
-                        }
-                    }
-                }
-                return ["status": "ok"]
-            }
-
-            logged(store: store, "items.clear") { _ in
-                DispatchQueue.main.async {
-                    withAnimation { store.items.removeAll() }
-                }
-                return ["status": "ok"]
-            }
-        }
-        .onDisappear {
-            Remo.unregister("items.add")
-            Remo.unregister("items.remove")
-            Remo.unregister("items.clear")
-        }
-    }
-}
-
-struct DetailPage: View {
-    let item: String
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "cube.box")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text(item)
-                .font(.title)
-            Text("Detail view for \(item)")
-                .foregroundStyle(.secondary)
-        }
-        .navigationTitle(item)
-        .task {
-            registerDetailCapabilities(item: item)
-        }
-        .onDisappear {
-            Remo.unregister("detail.getInfo")
-        }
     }
 }
 
