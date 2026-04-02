@@ -48,9 +48,9 @@ jobs:
           path: |
             ~/Library/Developer/Xcode/DerivedData
             ~/Library/Caches/org.swift.swiftpm
-          key: xcode-e2e-${{ hashFiles('examples/ios/RemoExamplePackage/Package.swift') }}-${{ github.sha }}
+          key: xcode-e2e-${{ hashFiles('examples/ios/RemoExamplePackage/**/*.swift', 'swift/RemoSwift/**/*.swift') }}-${{ github.sha }}
           restore-keys: |
-            xcode-e2e-${{ hashFiles('examples/ios/RemoExamplePackage/Package.swift') }}-
+            xcode-e2e-${{ hashFiles('examples/ios/RemoExamplePackage/**/*.swift', 'swift/RemoSwift/**/*.swift') }}-
             xcode-e2e-
       - name: Boot simulator
         run: xcrun simctl boot 'iPhone 17' 2>/dev/null || true

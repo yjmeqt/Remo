@@ -161,7 +161,7 @@ else
         exit 1
     fi
 
-    REMO_LOCAL=1 xcodebuild build \
+    REMO_LOCAL=1 xcodebuild clean build \
         -workspace "$ROOT/examples/ios/RemoExample.xcworkspace" \
         -scheme RemoExample \
         -destination "platform=iOS Simulator,id=$DEVICE_UUID" \
