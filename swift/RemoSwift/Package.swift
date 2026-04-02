@@ -30,27 +30,32 @@ let package = Package(
         ),
         .target(
             name: "RemoSwift",
-            dependencies: ["CRemo", "RemoMacros"],
+            dependencies: [
+                .target(name: "CRemo", condition: .when(platforms: [.iOS])),
+                "RemoMacros",
+            ],
             path: "Sources/RemoSwift",
             linkerSettings: [
-                .linkedLibrary("c++"),
-                .linkedFramework("Security"),
-                .linkedFramework("CoreMedia"),
-                .linkedFramework("VideoToolbox"),
-                .linkedFramework("CoreFoundation"),
+                .linkedLibrary("c++", .when(platforms: [.iOS])),
+                .linkedFramework("Security", .when(platforms: [.iOS])),
+                .linkedFramework("CoreMedia", .when(platforms: [.iOS])),
+                .linkedFramework("VideoToolbox", .when(platforms: [.iOS])),
+                .linkedFramework("CoreFoundation", .when(platforms: [.iOS])),
             ]
         ),
         .target(
             name: "RemoObjC",
-            dependencies: ["CRemo"],
+            dependencies: [
+                .target(name: "CRemo", condition: .when(platforms: [.iOS])),
+            ],
             path: "Sources/RemoObjC",
             publicHeadersPath: "include",
             linkerSettings: [
-                .linkedLibrary("c++"),
-                .linkedFramework("Security"),
-                .linkedFramework("CoreMedia"),
-                .linkedFramework("VideoToolbox"),
-                .linkedFramework("CoreFoundation"),
+                .linkedLibrary("c++", .when(platforms: [.iOS])),
+                .linkedFramework("Security", .when(platforms: [.iOS])),
+                .linkedFramework("CoreMedia", .when(platforms: [.iOS])),
+                .linkedFramework("VideoToolbox", .when(platforms: [.iOS])),
+                .linkedFramework("CoreFoundation", .when(platforms: [.iOS])),
             ]
         ),
         .testTarget(

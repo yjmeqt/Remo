@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG && canImport(UIKit)
 import UIKit
 import ObjectiveC
 
@@ -58,4 +58,4 @@ extension UIViewController {
         objc_setAssociatedObject(self, &_RemoLifecycle._namesKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 }
-#endif
+#endif // DEBUG && canImport(UIKit)

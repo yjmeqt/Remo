@@ -4,7 +4,7 @@ import Foundation
 
 // MARK: - Public API
 
-#if DEBUG
+#if DEBUG && canImport(CRemo)
 
 import CRemo
 
