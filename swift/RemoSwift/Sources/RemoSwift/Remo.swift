@@ -19,7 +19,9 @@ import CRemo
 /// ```swift
 /// Remo.register("navigate") { params in
 ///     let route = params["route"] as? String ?? "/"
-///     Navigator.shared.push(route)
+///     DispatchQueue.main.async {
+///         Navigator.shared.push(route)
+///     }
 ///     return ["status": "ok"]
 /// }
 /// ```
@@ -62,7 +64,10 @@ public final class Remo {
     /// Register a capability that can be invoked from macOS.
     ///
     /// The handler receives a JSON dictionary and must return a JSON-serializable dictionary.
-    public static func register(_ name: String, handler: @escaping ([String: Any]) -> [String: Any]) {
+    public static func register(
+        _ name: String,
+        handler: @Sendable @escaping ([String: Any]) -> [String: Any]
+    ) {
         _ = _ensureStarted
         let handlerBox = HandlerBox(handler: handler)
         let context = Unmanaged.passRetained(handlerBox).toOpaque()
@@ -101,8 +106,8 @@ public final class Remo {
 
 /// Box to prevent the Swift closure from being deallocated.
 private final class HandlerBox {
-    let handler: ([String: Any]) -> [String: Any]
-    init(handler: @escaping ([String: Any]) -> [String: Any]) {
+    let handler: @Sendable ([String: Any]) -> [String: Any]
+    init(handler: @Sendable @escaping ([String: Any]) -> [String: Any]) {
         self.handler = handler
     }
 }
@@ -144,7 +149,10 @@ public final class Remo {
     public static var port: UInt16 { 0 }
     public static func start(port: UInt16 = defaultPort) {}
     public static func stop() {}
-    public static func register(_ name: String, handler: @escaping ([String: Any]) -> [String: Any]) {}
+    public static func register(
+        _ name: String,
+        handler: @Sendable @escaping ([String: Any]) -> [String: Any]
+    ) {}
     @discardableResult
     public static func unregister(_ name: String) -> Bool { false }
     public static func listCapabilities() -> [String] { [] }

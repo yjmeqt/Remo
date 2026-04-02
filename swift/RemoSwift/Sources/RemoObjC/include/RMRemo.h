@@ -16,7 +16,9 @@ typedef NSDictionary<NSString *, id> *_Nonnull (^RMRemoCapabilityHandler)(NSDict
 /// @code
 /// [RMRemo registerCapability:@"navigate" handler:^NSDictionary *(NSDictionary *params) {
 ///     NSString *route = params[@"route"] ?: @"/";
-///     [[Navigator shared] push:route];
+///     dispatch_async(dispatch_get_main_queue(), ^{
+///         [[Navigator shared] push:route];
+///     });
 ///     return @{@"status": @"ok"};
 /// }];
 /// @endcode
@@ -39,6 +41,8 @@ typedef NSDictionary<NSString *, id> *_Nonnull (^RMRemoCapabilityHandler)(NSDict
 + (void)stop;
 
 /// Register a capability that can be invoked from macOS.
+/// The handler executes on Remo's background callback path.
+/// Hand off any UI or main-thread-only work explicitly.
 + (void)registerCapability:(NSString *)name handler:(RMRemoCapabilityHandler)handler;
 
 /// Unregister a capability by name.
