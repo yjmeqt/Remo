@@ -164,10 +164,34 @@ public struct ContentView: View {
                     }
                     return ["status": "ok", "color": color]
                 }
-                // items.* capabilities are registered by ListPage for its own lifetime.
+                #remo("items.add") { params in
+                    let name: String = params["name", default: "New Item"]
+                    DispatchQueue.main.async {
+                        withAnimation { store.items.append(name) }
+                    }
+                    return ["status": "ok", "name": name]
+                }
+                #remo("items.remove") { params in
+                    let name: String = params["name", default: ""]
+                    DispatchQueue.main.async {
+                        withAnimation {
+                            if let idx = store.items.firstIndex(of: name) {
+                                store.items.remove(at: idx)
+                            }
+                        }
+                    }
+                    return ["status": "ok", "name": name]
+                }
+                #remo("items.clear") { _ in
+                    DispatchQueue.main.async {
+                        withAnimation { store.items.removeAll() }
+                    }
+                    return ["status": "ok"]
+                }
                 await Remo.keepAlive(
                     "navigate", "state.get", "state.set",
-                    "ui.toast", "ui.confetti", "ui.setAccentColor"
+                    "ui.toast", "ui.confetti", "ui.setAccentColor",
+                    "items.add", "items.remove", "items.clear"
                 )
             }
         }
@@ -318,35 +342,6 @@ struct ListPage: View {
                     Button("Clear") {
                         withAnimation { store.items.removeAll() }
                     }
-                }
-            }
-            .task {
-                await #remo {
-                    #remo("items.add") { params in
-                        let name: String = params["name", default: "New Item"]
-                        DispatchQueue.main.async {
-                            withAnimation { store.items.append(name) }
-                        }
-                        return ["status": "ok", "name": name]
-                    }
-                    #remo("items.remove") { params in
-                        let name: String = params["name", default: ""]
-                        DispatchQueue.main.async {
-                            withAnimation {
-                                if let idx = store.items.firstIndex(of: name) {
-                                    store.items.remove(at: idx)
-                                }
-                            }
-                        }
-                        return ["status": "ok", "name": name]
-                    }
-                    #remo("items.clear") { _ in
-                        DispatchQueue.main.async {
-                            withAnimation { store.items.removeAll() }
-                        }
-                        return ["status": "ok"]
-                    }
-                    await Remo.keepAlive("items.add", "items.remove", "items.clear")
                 }
             }
         }
