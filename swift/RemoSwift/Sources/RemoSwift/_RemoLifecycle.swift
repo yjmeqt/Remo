@@ -12,7 +12,8 @@ internal enum _RemoLifecycle {
     private static let _lock = NSLock()
 
     // Key for objc associated object storing [String] of registered capability names.
-    private static var _namesKey: UInt8 = 0
+    // Must be `fileprivate` (not `private`) so the UIViewController extension below can read it.
+    fileprivate static var _namesKey: UInt8 = 0
 
     /// Register a capability and associate it with `owner`'s disappear lifecycle.
     ///

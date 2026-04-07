@@ -443,7 +443,7 @@ A SwiftUI app demonstrating full SDK integration:
 
 The example app demonstrates both built-in and custom capabilities. Built-in capabilities (`__view_tree`, `__screenshot`, `__device_info`, `__app_info`) are available automatically.
 
-**Global capabilities** (always registered via `setupRemo()`):
+**Global capabilities** (registered via `#remo` in root `ContentView.task {}`):
 
 | Capability | Params | Effect |
 |---|---|---|
@@ -454,7 +454,7 @@ The example app demonstrates both built-in and custom capabilities. Built-in cap
 | `ui.confetti` | none | Trigger confetti animation |
 | `ui.setAccentColor` | `{"color": "red"}` | Change app accent color |
 
-**Page-scoped capabilities** (registered on `.onAppear`, unregistered on `.onDisappear`):
+**Page-scoped capabilities** (registered via `#remo` in each view's `.task {}`, auto-unregistered via `keepAlive`):
 
 | Capability | Available on | Params | Effect |
 |---|---|---|---|

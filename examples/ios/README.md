@@ -102,4 +102,4 @@ RemoExample.xcworkspace
 └── RemoExampleUITests/           # UI automation tests
 ```
 
-Global capabilities (`items.add`, `items.remove`, `items.clear`, navigation, UI) are registered once at app launch in `setupRemo()`. The Grid tab (`UIKitDemoViewController`) registers `grid.*` capabilities while it is alive and unregisters them on `deinit`. `AppStore.items` is pushed into the Grid tab via `UIKitDemoScreen.updateUIViewController` whenever the array changes.
+Global capabilities (`items.add`, `items.remove`, `items.clear`, navigation, UI) are registered via `#remo` inline forms inside an `await #remo { ... }` block on the root `ContentView.task {}` — they live for the app's lifetime and are fully stripped from release builds. The Grid tab (`UIKitDemoViewController`) registers `grid.*` capabilities while it is alive and unregisters them on `deinit`. `AppStore.items` is pushed into the Grid tab via `UIKitDemoScreen.updateUIViewController` whenever the array changes.

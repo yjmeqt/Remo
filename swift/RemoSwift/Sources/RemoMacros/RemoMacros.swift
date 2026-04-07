@@ -51,3 +51,18 @@ public macro remo(
 public macro remo(
     _ body: () -> Void
 ) = #externalMacro(module: "RemoMacrosPlugin", type: "RemoBlockMacro")
+
+/// Async block form — wraps registrations and `keepAlive` so everything is stripped in release.
+///
+/// ```swift
+/// .task {
+///     await #remo {
+///         #remo("navigate") { params in ... }
+///         await Remo.keepAlive("navigate")
+///     }
+/// }
+/// ```
+@freestanding(expression)
+public macro remo(
+    _ body: () async -> Void
+) = #externalMacro(module: "RemoMacrosPlugin", type: "RemoBlockAsyncMacro")

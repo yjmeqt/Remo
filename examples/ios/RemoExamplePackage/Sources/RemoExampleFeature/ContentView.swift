@@ -63,126 +63,6 @@ public final class AppStore: @unchecked Sendable {
     }
 }
 
-// MARK: - Remo Setup
-
-/// Helper that wraps a background capability handler with activity logging.
-private func logged(
-    store: AppStore,
-    _ name: String,
-    handler: @Sendable @escaping ([String: Any]) -> [String: Any]
-) {
-    Remo.register(name) { params in
-        let paramsJSON = (try? JSONSerialization.data(withJSONObject: params))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        let result = handler(params)
-        let resultJSON = (try? JSONSerialization.data(withJSONObject: result))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        store.log(capability: name, params: paramsJSON, result: resultJSON)
-        return result
-    }
-}
-
-/// Register global capabilities that are always available regardless of the active tab.
-public func setupRemo(store: AppStore) {
-    logged(store: store, "navigate") { params in
-        let route = params["route"] as? String ?? "home"
-        DispatchQueue.main.async { store.currentRoute = route }
-        return ["status": "ok", "route": route]
-    }
-
-    logged(store: store, "state.get") { params in
-        let key = params["key"] as? String ?? ""
-        switch key {
-        case "counter": return ["value": store.counter]
-        case "username": return ["value": store.username]
-        case "items": return ["value": store.items]
-        case "currentRoute": return ["value": store.currentRoute]
-        case "accentColor": return ["value": store.accentColorName]
-        default: return ["error": "unknown key: \(key)"]
-        }
-    }
-
-    logged(store: store, "state.set") { params in
-        let key = params["key"] as? String ?? ""
-        let intValue = params["value"] as? Int
-        let stringValue = params["value"] as? String
-        let arrayValue = params["value"] as? [String]
-        DispatchQueue.main.async {
-            switch key {
-            case "counter": if let v = intValue { store.counter = v }
-            case "username": if let v = stringValue { store.username = v }
-            case "items": if let v = arrayValue { store.items = v }
-            default: break
-            }
-        }
-        return ["status": "ok"]
-    }
-
-    logged(store: store, "ui.toast") { params in
-        let message = params["message"] as? String ?? "Hello from Remo!"
-        DispatchQueue.main.async {
-            withAnimation(.spring(duration: 0.4)) {
-                store.toastMessage = message
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                withAnimation(.easeOut(duration: 0.3)) {
-                    if store.toastMessage == message {
-                        store.toastMessage = nil
-                    }
-                }
-            }
-        }
-        return ["status": "ok"]
-    }
-
-    logged(store: store, "ui.confetti") { _ in
-        DispatchQueue.main.async {
-            store.showConfetti = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                store.showConfetti = false
-            }
-        }
-        return ["status": "ok"]
-    }
-
-    logged(store: store, "ui.setAccentColor") { params in
-        let color = params["color"] as? String ?? "blue"
-        DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                store.accentColorName = color
-            }
-        }
-        return ["status": "ok", "color": color]
-    }
-
-    logged(store: store, "items.add") { params in
-        let name = params["name"] as? String ?? "New Item"
-        DispatchQueue.main.async {
-            withAnimation { store.items.append(name) }
-        }
-        return ["status": "ok", "name": name]
-    }
-
-    logged(store: store, "items.remove") { params in
-        let name = params["name"] as? String ?? ""
-        DispatchQueue.main.async {
-            withAnimation {
-                if let idx = store.items.firstIndex(of: name) {
-                    store.items.remove(at: idx)
-                }
-            }
-        }
-        return ["status": "ok", "name": name]
-    }
-
-    logged(store: store, "items.clear") { _ in
-        DispatchQueue.main.async {
-            withAnimation { store.items.removeAll() }
-        }
-        return ["status": "ok"]
-    }
-}
-
 // MARK: - Root View
 
 public struct ContentView: View {
@@ -214,6 +94,81 @@ public struct ContentView: View {
 
             if store.showConfetti {
                 ConfettiOverlay()
+            }
+        }
+        .task {
+            let store = store  // rebind as `let` for @Sendable closures in #remo handlers
+            await #remo {
+                #remo("navigate") { params in
+                    let route: String = params["route", default: "home"]
+                    DispatchQueue.main.async { store.currentRoute = route }
+                    return ["status": "ok", "route": route]
+                }
+                #remo("state.get") { params in
+                    let key: String = params["key", default: ""]
+                    switch key {
+                    case "counter": return ["value": store.counter]
+                    case "username": return ["value": store.username]
+                    case "items": return ["value": store.items]
+                    case "currentRoute": return ["value": store.currentRoute]
+                    case "accentColor": return ["value": store.accentColorName]
+                    default: return ["error": "unknown key: \(key)"]
+                    }
+                }
+                #remo("state.set") { params in
+                    let key: String = params["key", default: ""]
+                    let intValue: Int? = params["value"]
+                    let stringValue: String? = params["value"]
+                    let arrayValue: [String]? = params["value"]
+                    DispatchQueue.main.async {
+                        switch key {
+                        case "counter": if let v = intValue { store.counter = v }
+                        case "username": if let v = stringValue { store.username = v }
+                        case "items": if let v = arrayValue { store.items = v }
+                        default: break
+                        }
+                    }
+                    return ["status": "ok"]
+                }
+                #remo("ui.toast") { params in
+                    let message: String = params["message", default: "Hello from Remo!"]
+                    DispatchQueue.main.async {
+                        withAnimation(.spring(duration: 0.4)) {
+                            store.toastMessage = message
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                if store.toastMessage == message {
+                                    store.toastMessage = nil
+                                }
+                            }
+                        }
+                    }
+                    return ["status": "ok"]
+                }
+                #remo("ui.confetti") { _ in
+                    DispatchQueue.main.async {
+                        store.showConfetti = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            store.showConfetti = false
+                        }
+                    }
+                    return ["status": "ok"]
+                }
+                #remo("ui.setAccentColor") { params in
+                    let color: String = params["color", default: "blue"]
+                    DispatchQueue.main.async {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            store.accentColorName = color
+                        }
+                    }
+                    return ["status": "ok", "color": color]
+                }
+                // items.* capabilities are registered by ListPage for its own lifetime.
+                await Remo.keepAlive(
+                    "navigate", "state.get", "state.set",
+                    "ui.toast", "ui.confetti", "ui.setAccentColor"
+                )
             }
         }
     }
@@ -277,12 +232,14 @@ struct HomeView: View {
             .padding()
             .navigationTitle("Remo")
             .task {
-                #remo("counter.increment") { params in
-                    let amount: Int = params["amount", default: 1]
-                    DispatchQueue.main.async { store.counter += amount }
-                    return ["status": "ok", "amount": amount]
+                await #remo {
+                    #remo("counter.increment") { params in
+                        let amount: Int = params["amount", default: 1]
+                        DispatchQueue.main.async { store.counter += amount }
+                        return ["status": "ok", "amount": amount]
+                    }
+                    await Remo.keepAlive("counter.increment")
                 }
-                await Remo.keepAlive("counter.increment")
             }
         }
     }
@@ -364,31 +321,33 @@ struct ListPage: View {
                 }
             }
             .task {
-                #remo("items.add") { params in
-                    let name: String = params["name", default: "New Item"]
-                    DispatchQueue.main.async {
-                        withAnimation { store.items.append(name) }
+                await #remo {
+                    #remo("items.add") { params in
+                        let name: String = params["name", default: "New Item"]
+                        DispatchQueue.main.async {
+                            withAnimation { store.items.append(name) }
+                        }
+                        return ["status": "ok", "name": name]
                     }
-                    return ["status": "ok", "name": name]
-                }
-                #remo("items.remove") { params in
-                    let name: String = params["name", default: ""]
-                    DispatchQueue.main.async {
-                        withAnimation {
-                            if let idx = store.items.firstIndex(of: name) {
-                                store.items.remove(at: idx)
+                    #remo("items.remove") { params in
+                        let name: String = params["name", default: ""]
+                        DispatchQueue.main.async {
+                            withAnimation {
+                                if let idx = store.items.firstIndex(of: name) {
+                                    store.items.remove(at: idx)
+                                }
                             }
                         }
+                        return ["status": "ok", "name": name]
                     }
-                    return ["status": "ok", "name": name]
-                }
-                #remo("items.clear") { _ in
-                    DispatchQueue.main.async {
-                        withAnimation { store.items.removeAll() }
+                    #remo("items.clear") { _ in
+                        DispatchQueue.main.async {
+                            withAnimation { store.items.removeAll() }
+                        }
+                        return ["status": "ok"]
                     }
-                    return ["status": "ok"]
+                    await Remo.keepAlive("items.add", "items.remove", "items.clear")
                 }
-                await Remo.keepAlive("items.add", "items.remove", "items.clear")
             }
         }
     }
@@ -409,10 +368,12 @@ struct DetailPage: View {
         }
         .navigationTitle(item)
         .task {
-            #remo("detail.getInfo") { [item] _ in
-                return ["item": item]
+            await #remo {
+                #remo("detail.getInfo") { [item] _ in
+                    return ["item": item]
+                }
+                await Remo.keepAlive("detail.getInfo")
             }
-            await Remo.keepAlive("detail.getInfo")
         }
     }
 }

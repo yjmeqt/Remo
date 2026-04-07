@@ -87,18 +87,17 @@ Good candidates:
 Pattern:
 
 ```swift
-#if DEBUG
 import RemoSwift
 
-Remo.register("verify.feed_count") { _ in
-    ["count": FeedRepository.shared.items.count]
+// The #remo macro strips this from release builds automatically — no #if DEBUG needed.
+#remo("verify.feed_count") { _ in
+    return ["count": FeedRepository.shared.items.count]
 }
-#endif
 ```
 
-Keep verification capabilities inside debug-only code and return structured JSON. `Remo.register` handlers execute on a background callback path, so any UI mutation or actor-isolated work must be explicitly handed off instead of performed directly in the callback.
+`#remo` handlers execute on a background callback path, so any UI mutation or actor-isolated work must be explicitly handed off instead of performed directly in the callback.
 
-All app-side Remo code should stay under `#if DEBUG`, including imports, startup hooks, and verification capability registration.
+The `#remo` macro ensures all Remo code is fully stripped from release builds — no manual `#if DEBUG` wrappers needed.
 
 ## Step 6: Write the Summary
 

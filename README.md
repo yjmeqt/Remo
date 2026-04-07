@@ -60,26 +60,34 @@ pod 'Remo/ObjC', :podspec => 'https://raw.githubusercontent.com/yjmeqt/remo-spm/
 
 ### 2. Register capabilities
 
-**Swift**
+**Swift — `#remo` macro (recommended)**
+
+The `#remo` macro strips all Remo code from release builds automatically. No `#if DEBUG` wrappers needed.
 
 ```swift
-#if DEBUG
 import RemoSwift
 
-// The server starts automatically on first API access.
-// Simulator: random port (avoids collisions). Device: port 9930 (for USB tunnel).
-// Remo handlers execute on a background callback path and must remain Sendable.
-Remo.register("myFeature.toggle") { params in
-    let enabled = params["enabled"] as? Bool ?? false
-    DispatchQueue.main.async {
-        FeatureFlags.shared.myFeature = enabled
+// SwiftUI — register in .task, auto-unregisters when view disappears
+.task {
+    await #remo {
+        #remo("myFeature.toggle") { params in
+            let enabled: Bool = params["enabled", default: false]
+            DispatchQueue.main.async {
+                FeatureFlags.shared.myFeature = enabled
+            }
+            return ["toggled": enabled]
+        }
+        await Remo.keepAlive("myFeature.toggle")
     }
-    return ["toggled": enabled]
 }
 
-// Unregister when no longer needed (e.g., in .onDisappear):
-Remo.unregister("myFeature.toggle")
-#endif
+// UIKit — auto-unregisters on viewDidDisappear
+override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    #remo("grid.visible", scopedTo: self) { [weak self] _ in
+        return ["items": self?.visibleItems() ?? []]
+    }
+}
 ```
 
 **Objective-C**
@@ -89,7 +97,7 @@ Remo.unregister("myFeature.toggle")
 #import <RemoObjC/RMRemo.h>
 
 // The server starts automatically on first API access.
-// Objective-C handlers also run on Remo's background callback path.
+// Objective-C handlers run on Remo's background callback path.
 [RMRemo registerCapability:@"myFeature.toggle"
                    handler:^NSDictionary *(NSDictionary *params) {
     BOOL enabled = [params[@"enabled"] boolValue];
@@ -104,44 +112,9 @@ Remo.unregister("myFeature.toggle")
 #endif
 ```
 
-Capabilities can be unregistered dynamically — useful for page-level or conditional capabilities:
+Remo handlers execute on a background callback path and must remain `@Sendable`. Do not assume main-thread or `MainActor` execution inside the callback — explicitly hand off UI mutations to the main thread.
 
-**Swift**
-
-```swift
-#if DEBUG
-// Register when entering a screen
-Remo.register("grid.visible") { _ in
-    ["items": visibleItems()]
-}
-
-// Unregister when leaving
-Remo.unregister("grid.visible")
-#endif
-```
-
-In Swift 6 strict concurrency projects, `Remo.register` requires a `@Sendable` handler. Do not assume main-thread or `MainActor` execution inside the callback. If the handler needs to mutate UI state, explicitly hand that work off to the main thread.
-
-The iOS example app includes a dedicated Grid tab that demonstrates this pattern in a `UIViewController` with nested scrolling, a horizontal pager, and `grid.*` capabilities wired through the same background callback contract.
-
-Objective-C callbacks follow the same background execution model, but Objective-C does not get Swift's `@Sendable` or actor-isolation compile-time checks. Treat `RMRemoCapabilityHandler` as a background callback and dispatch any UI or main-thread-only work explicitly.
-
-**Objective-C**
-
-```objc
-#if DEBUG
-// Register
-[RMRemo registerCapability:@"grid.visible" handler:^NSDictionary *(NSDictionary *params) {
-    __block NSArray *items = @[];
-    dispatch_sync(dispatch_get_main_queue(), ^{
-        items = [self visibleItems];
-    });
-    return @{@"items": items};
-}];
-
-// Unregister
-[RMRemo unregisterCapability:@"grid.visible"];
-#endif
+The iOS example app includes a dedicated Grid tab that demonstrates UIKit integration with `grid.*` capabilities wired through `scopedTo:` lifecycle management.
 ```
 
 ### 3. Install the CLI

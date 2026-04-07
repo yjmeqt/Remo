@@ -9,6 +9,7 @@ struct RemoMacrosPlugin: CompilerPlugin {
         RemoInlineMacro.self,
         RemoScopedMacro.self,
         RemoBlockMacro.self,
+        RemoBlockAsyncMacro.self,
     ]
 }
 
@@ -133,6 +134,27 @@ public struct RemoBlockMacro: ExpressionMacro {
 
         return """
         {
+            #if DEBUG
+            \(body)
+            #endif
+        }()
+        """
+    }
+}
+
+// MARK: - RemoBlockAsyncMacro
+
+public struct RemoBlockAsyncMacro: ExpressionMacro {
+    public static func expansion(
+        of node: some FreestandingMacroExpansionSyntax,
+        in context: some MacroExpansionContext
+    ) throws -> ExprSyntax {
+        guard let body = node.trailingClosure?.statements else {
+            throw RemoMacroError.missingBody
+        }
+
+        return """
+        { () async in
             #if DEBUG
             \(body)
             #endif

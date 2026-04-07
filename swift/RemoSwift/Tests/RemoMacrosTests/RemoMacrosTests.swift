@@ -9,6 +9,12 @@ import XCTest
 let testMacros: [String: Macro.Type] = ["remo": RemoInlineMacro.self]
 let testMacrosScoped: [String: Macro.Type] = ["remo": RemoScopedMacro.self]
 let testMacrosBlock: [String: Macro.Type] = ["remo": RemoBlockMacro.self]
+let testMacrosBlockAsync: [String: Macro.Type] = ["remo": RemoBlockAsyncMacro.self]
+// Note: SwiftSyntaxMacrosTestSupport uses [String: Macro.Type], which cannot hold two
+// implementations under the same key. The sync and async block forms are therefore tested
+// in separate dictionaries above. Real-world overload dispatch (sync `#remo {}` vs
+// `await #remo {}`) is validated by the example app, which uses both forms and builds
+// successfully.
 
 final class RemoMacrosTests: XCTestCase {
     func testInlineFormWithParams() {
@@ -127,6 +133,29 @@ final class RemoMacrosTests: XCTestCase {
             }()
             """,
             macros: testMacrosBlock
+        )
+    }
+
+    func testBlockAsyncForm() {
+        assertMacroExpansion(
+            """
+            #remo {
+                Remo.register("navigate") { _ in [:] }
+                await Remo.keepAlive("navigate")
+            }
+            """,
+            expandedSource: """
+            { () async in
+                #if DEBUG
+
+                    Remo.register("navigate") { _ in
+                    [:]
+                }
+                    await Remo.keepAlive("navigate")
+                #endif
+            }()
+            """,
+            macros: testMacrosBlockAsync
         )
     }
 }
