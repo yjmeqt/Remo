@@ -68,6 +68,8 @@ cleanup() {
         echo "Terminating app..."
         xcrun simctl terminate "$DEVICE_UUID" com.remo.example 2>/dev/null || true
     fi
+    # Kill any remaining remo processes to avoid orphan warnings in CI
+    pkill -x remo 2>/dev/null || true
 }
 trap cleanup EXIT
 
