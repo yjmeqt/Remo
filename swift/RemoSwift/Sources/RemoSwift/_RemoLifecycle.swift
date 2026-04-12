@@ -2,12 +2,12 @@
 import UIKit
 import ObjectiveC
 
-/// Internal UIKit lifecycle manager for `#remo("name", scopedTo: self)` expansions.
+/// UIKit lifecycle manager used by `#remoScope(scopedTo:)` macro expansions.
 ///
 /// Swizzles `UIViewController.viewDidDisappear(_:)` once per process lifetime.
 /// Uses associated objects to track registered capability names per VC instance.
 /// When a VC disappears, all its tracked capabilities are unregistered.
-internal enum _RemoLifecycle {
+public enum _RemoLifecycle {
     private static var _swizzled = false
     private static let _lock = NSLock()
 
@@ -15,21 +15,17 @@ internal enum _RemoLifecycle {
     // Must be `fileprivate` (not `private`) so the UIViewController extension below can read it.
     fileprivate static var _namesKey: UInt8 = 0
 
-    /// Register a capability and associate it with `owner`'s disappear lifecycle.
+    /// Track capability names for automatic unregistration on `viewDidDisappear`.
     ///
-    /// Called by the `#remo("name", scopedTo: self)` macro expansion.
-    static func registerScoped(
-        owner: UIViewController,
-        name: String,
-        handler: @escaping ([String: Any]) -> [String: Any]
-    ) {
+    /// Called by the `#remoScope(scopedTo:)` macro expansion. The capabilities
+    /// themselves are registered by `#remoCap` expansions in the same scope.
+    public static func trackNames(_ names: [String], owner: UIViewController) {
         _swizzleOnce()
-        var names = objc_getAssociatedObject(owner, &_namesKey) as? [String] ?? []
-        if !names.contains(name) {
-            names.append(name)
+        var existing = objc_getAssociatedObject(owner, &_namesKey) as? [String] ?? []
+        for name in names where !existing.contains(name) {
+            existing.append(name)
         }
-        objc_setAssociatedObject(owner, &_namesKey, names, .OBJC_ASSOCIATION_RETAIN)
-        Remo.register(name, handler: handler)
+        objc_setAssociatedObject(owner, &_namesKey, existing, .OBJC_ASSOCIATION_RETAIN)
     }
 
     private static func _swizzleOnce() {

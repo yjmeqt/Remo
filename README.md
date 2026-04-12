@@ -60,32 +60,60 @@ pod 'Remo/ObjC', :podspec => 'https://raw.githubusercontent.com/yjmeqt/remo-spm/
 
 ### 2. Register capabilities
 
-**Swift — `#remo` macro (recommended)**
+**Swift — typed `#Remo` + `#remoCap` + `#remoScope` macros (recommended)**
 
-The `#remo` macro strips all Remo code from release builds automatically. No `#if DEBUG` wrappers needed.
+Remo macros strip all Remo code from release builds automatically. No `#if DEBUG` wrappers needed.
 
 ```swift
 import RemoSwift
 
-// SwiftUI — register in .task, auto-unregisters when view disappears
+// SwiftUI — declare and register inside the same debug island
 .task {
-    await #remo {
-        #remo("myFeature.toggle") { params in
-            let enabled: Bool = params["enabled", default: false]
-            DispatchQueue.main.async {
-                FeatureFlags.shared.myFeature = enabled
-            }
-            return ["toggled": enabled]
+    await #Remo {
+        struct ToggleResponse: Encodable {
+            let toggled: Bool
         }
-        await Remo.keepAlive("myFeature.toggle")
+
+        enum MyFeatureToggle: RemoCapability {
+            static let name = "myFeature.toggle"
+
+            struct Request: Decodable {
+                let enabled: Bool?
+            }
+
+            typealias Response = ToggleResponse
+        }
+
+        await #remoScope {
+            #remoCap(MyFeatureToggle.self) { req in
+                let enabled = req.enabled ?? false
+                Task { @MainActor in
+                    FeatureFlags.shared.myFeature = enabled
+                }
+                return ToggleResponse(toggled: enabled)
+            }
+        }
     }
 }
 
-// UIKit — auto-unregisters on viewDidDisappear
+// UIKit — local capability type plus view-controller scoped lifecycle
 override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
-    #remo("grid.visible", scopedTo: self) { [weak self] _ in
-        return ["items": self?.visibleItems() ?? []]
+    #Remo {
+        struct GridVisibleResponse: Encodable {
+            let items: [String]
+        }
+
+        enum GridVisible: RemoCapability {
+            static let name = "grid.visible"
+            typealias Response = GridVisibleResponse
+        }
+
+        #remoScope(scopedTo: self) {
+            #remoCap(GridVisible.self) { [weak self] _ in
+                return GridVisibleResponse(items: self?.visibleItems() ?? [])
+            }
+        }
     }
 }
 ```
