@@ -39,3 +39,19 @@ private func requireSendable<T: Sendable>(_: T.Type) {}
         #expect(name.hasPrefix("grid."), "\(name) must start with 'grid.'")
     }
 }
+
+@Test func gridTabSelectParsingSupportsIndexAndIdentifierTargets() throws {
+    #expect(try UIKitDemoCapabilityContract.parseTabSelect(["index": 1]) == .index(1))
+    #expect(try UIKitDemoCapabilityContract.parseTabSelect(["id": "feed"]) == .tab(.feed))
+}
+
+@Test func gridHorizontalScrollRejectsAmbiguousTargets() {
+    do {
+        _ = try UIKitDemoCapabilityContract.parseHorizontalScroll(["direction": "next", "id": "items"])
+        Issue.record("expected parseHorizontalScroll to reject multiple target selectors")
+    } catch let error as UIKitDemoCapabilityError {
+        #expect(error == .missingScrollTarget)
+    } catch {
+        Issue.record("expected UIKitDemoCapabilityError, got \(error)")
+    }
+}

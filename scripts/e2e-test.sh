@@ -132,6 +132,16 @@ maybe_screenshot() {
     fi
 }
 
+find_built_app() {
+    find ~/Library/Developer/Xcode/DerivedData \
+        -path "*/Debug-iphonesimulator/RemoExample.app" \
+        -maxdepth 5 \
+        -type d \
+        -print0 2>/dev/null \
+        | xargs -0 ls -td 2>/dev/null \
+        | head -1
+}
+
 # ---------------------------------------------------------------------------
 # Phase 0: Build
 # ---------------------------------------------------------------------------
@@ -172,7 +182,7 @@ else
         2>&1 | tail -5
 
     # Find the built app bundle
-    APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "RemoExample.app" -path "*/Debug-iphonesimulator/*" -maxdepth 5 2>/dev/null | head -1)
+    APP_PATH=$(find_built_app)
     if [ -z "$APP_PATH" ]; then
         echo -e "${RED}ERROR:${RESET} Could not find built RemoExample.app in DerivedData"
         exit 1
@@ -193,7 +203,7 @@ echo "  Device: $DEVICE_NAME ($DEVICE_UUID)"
 
 # Find app path if not set during build phase
 if [ -z "${APP_PATH:-}" ]; then
-    APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "RemoExample.app" -path "*/Debug-iphonesimulator/*" -maxdepth 5 2>/dev/null | head -1)
+    APP_PATH=$(find_built_app)
     if [ -z "$APP_PATH" ]; then
         echo -e "${RED}ERROR:${RESET} RemoExample.app not found. Run without SKIP_BUILD first."
         exit 1
@@ -373,15 +383,15 @@ assert_call "grid.visible" "grid.visible" '{}' '.data.status == "ok" and .data.t
 sleep 0.3
 maybe_screenshot "09-visible"
 
-# -- Items (global capability, backed by AppStore.items) --
+# -- Capability cleanup --
 echo ""
-echo -e "${BOLD}[Items]${RESET}"
-assert_call "items.add" "items.add" '{"name":"Item X"}' '.data.status == "ok"'
-sleep 0.3
-assert_call "items.remove" "items.remove" '{"name":"Item X"}' '.data.status == "ok"'
-sleep 0.3
-assert_call "items.clear" "items.clear" '{}' '.data.status == "ok"'
-sleep 0.3
+echo -e "${BOLD}[Capabilities]${RESET}"
+CAPABILITIES_OUTPUT=$(remo list -a "$ADDR" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' || true)
+if echo "$CAPABILITIES_OUTPUT" | grep -Eq 'items\.(add|remove|clear)'; then
+    fail "legacy items.* capabilities are not exposed"
+else
+    pass "legacy items.* capabilities are not exposed"
+fi
 
 # -- State round-trip --
 echo ""

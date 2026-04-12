@@ -36,9 +36,6 @@ The app registers capabilities at different scopes to demonstrate both global an
 | `ui.toast` | Show toast | `remo call ui.toast '{"message":"Hello!"}'` |
 | `ui.confetti` | Trigger confetti | `remo call ui.confetti '{}'` |
 | `ui.setAccentColor` | Change theme | `remo call ui.setAccentColor '{"color":"purple"}'` |
-| `items.add` | Add item | `remo call items.add '{"name":"New"}'` |
-| `items.remove` | Remove item | `remo call items.remove '{"name":"Morning Standup"}'` |
-| `items.clear` | Clear all items | `remo call items.clear '{}'` |
 
 ### Grid tab (available when Grid is visible)
 
@@ -72,20 +69,17 @@ remo call -a <addr> grid.visible '{}'
 remo call -a <addr> grid.scroll.vertical '{"position":"bottom"}'
 remo call -a <addr> grid.visible '{}'
 
-# 6. Add an item — it appears in the Items tab immediately
-remo call -a <addr> items.add '{"name":"Hot Fix"}'
-
-# 7. Switch to Items tab and verify
+# 6. Switch to Items tab and verify the seeded list
 remo call -a <addr> grid.tab.select '{"id":"items"}'
 remo call -a <addr> grid.visible '{}'
 
-# 8. Switch back to Feed
+# 7. Switch back to Feed
 remo call -a <addr> grid.tab.select '{"id":"feed"}'
 
-# 9. Append a card to the Feed grid
+# 8. Append a card to the Feed grid
 remo call -a <addr> grid.feed.append '{"title":"Pinned","subtitle":"Added from CLI"}'
 
-# 10. Take a screenshot to verify
+# 9. Take a screenshot to verify
 remo screenshot -a <addr> -o screen.jpg
 ```
 
@@ -102,4 +96,4 @@ RemoExample.xcworkspace
 └── RemoExampleUITests/           # UI automation tests
 ```
 
-Global capabilities (`items.add`, `items.remove`, `items.clear`, navigation, UI) are registered as local typed `RemoCapability` enums inside a single `await #Remo { ... }` block on the root `ContentView.task {}`. The `await #remoScope { ... }` wrapper keeps them registered for the task lifetime and strips the whole island from release builds. The Grid tab (`UIKitDemoViewController`) follows the same pattern in UIKit: local typed capability enums live inside `#Remo { ... }`, while `#remoScope(scopedTo: self)` tracks them for unregister-on-disappear behavior. `AppStore.items` is pushed into the Grid tab via `UIKitDemoScreen.updateUIViewController` whenever the array changes.
+Global capabilities (navigation, state, and UI) are registered as local typed `RemoCapability` enums inside a single `await #Remo { ... }` block on the root `ContentView.task {}`. The `await #remoScope { ... }` wrapper keeps them registered for the task lifetime and strips the whole island from release builds. The Grid tab (`UIKitDemoViewController`) now keeps its UIKit-only Remo bridge and capability contract together in a dedicated debug-only extension file, while `#remoScope(scopedTo: self)` tracks those `grid.*` capabilities for unregister-on-disappear behavior. `AppStore.items` is still pushed into the Grid tab via `UIKitDemoScreen.updateUIViewController` whenever the array changes.

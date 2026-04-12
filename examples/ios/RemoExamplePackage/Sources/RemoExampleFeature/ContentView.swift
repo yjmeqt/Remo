@@ -49,11 +49,6 @@ public struct ContentView: View {
                     let color: String
                 }
 
-                struct NameResponse: Encodable {
-                    let status: String = "ok"
-                    let name: String
-                }
-
                 enum StateValue: Encodable {
                     case int(Int)
                     case string(String)
@@ -167,30 +162,6 @@ public struct ContentView: View {
                     typealias Response = ColorResponse
                 }
 
-                enum AddItem: RemoCapability {
-                    static let name = "items.add"
-
-                    struct Request: Decodable {
-                        let name: String?
-                    }
-
-                    typealias Response = NameResponse
-                }
-
-                enum RemoveItem: RemoCapability {
-                    static let name = "items.remove"
-
-                    struct Request: Decodable {
-                        let name: String?
-                    }
-
-                    typealias Response = NameResponse
-                }
-
-                enum ClearItems: RemoCapability {
-                    static let name = "items.clear"
-                }
-
                 await #remoScope {
                     #remoCap(Navigate.self) { req in
                         let route = req.route ?? "home"
@@ -268,37 +239,6 @@ public struct ContentView: View {
                             }
                         }
                         return ColorResponse(color: color)
-                    }
-
-                    #remoCap(AddItem.self) { req in
-                        let name = req.name ?? "New Item"
-                        Task { @MainActor in
-                            withAnimation {
-                                store.items.append(name)
-                            }
-                        }
-                        return NameResponse(name: name)
-                    }
-
-                    #remoCap(RemoveItem.self) { req in
-                        let name = req.name ?? ""
-                        Task { @MainActor in
-                            withAnimation {
-                                if let idx = store.items.firstIndex(of: name) {
-                                    store.items.remove(at: idx)
-                                }
-                            }
-                        }
-                        return NameResponse(name: name)
-                    }
-
-                    #remoCap(ClearItems.self) { _ in
-                        Task { @MainActor in
-                            withAnimation {
-                                store.items.removeAll()
-                            }
-                        }
-                        return RemoOK()
                     }
                 }
             }

@@ -1,5 +1,10 @@
 import SwiftUI
 import RemoSwift
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct SettingsPage: View {
     @Environment(AppStore.self) private var store
@@ -50,10 +55,6 @@ struct SettingsPage: View {
                     CopyableCommand(
                         label: "Confetti",
                         command: "remo call -a 127.0.0.1:\(Remo.port) ui.confetti '{}'"
-                    )
-                    CopyableCommand(
-                        label: "Add Item",
-                        command: "remo call -a 127.0.0.1:\(Remo.port) items.add '{\"name\": \"Remote\"}'"
                     )
                     CopyableCommand(
                         label: "Recolor",
@@ -122,7 +123,7 @@ struct CopyableCommand: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture {
-            UIPasteboard.general.string = command
+            copyToPasteboard(command)
             withAnimation { copied = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 withAnimation { copied = false }
@@ -137,4 +138,13 @@ struct CopyableCommand: View {
             }
         }
     }
+}
+
+private func copyToPasteboard(_ value: String) {
+    #if canImport(AppKit)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(value, forType: .string)
+    #elseif canImport(UIKit)
+    UIPasteboard.general.string = value
+    #endif
 }

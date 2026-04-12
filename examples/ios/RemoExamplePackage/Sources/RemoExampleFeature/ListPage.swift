@@ -11,7 +11,7 @@ struct ListPage: View {
                     ContentUnavailableView(
                         "No Items",
                         systemImage: "tray",
-                        description: Text("Add items remotely:\nremo call items.add '{\"name\": \"Hello\"}'")
+                        description: Text("Replace the shared items state to repopulate this demo list.")
                     )
                 } else {
                     List {
