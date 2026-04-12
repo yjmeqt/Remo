@@ -28,12 +28,12 @@ private func requireSendable<T: Sendable>(_: T.Type) {}
 
 @Test func capabilityNamesUseGridPrefix() {
     let names = [
-        UIKitDemoCapabilityContract.Names.tabSelect,
-        UIKitDemoCapabilityContract.Names.feedAppend,
-        UIKitDemoCapabilityContract.Names.feedReset,
-        UIKitDemoCapabilityContract.Names.scrollVertical,
-        UIKitDemoCapabilityContract.Names.scrollHorizontal,
-        UIKitDemoCapabilityContract.Names.visible,
+        GridCapabilityNames.tabSelect,
+        GridCapabilityNames.feedAppend,
+        GridCapabilityNames.feedReset,
+        GridCapabilityNames.scrollVertical,
+        GridCapabilityNames.scrollHorizontal,
+        GridCapabilityNames.visible,
     ]
     for name in names {
         #expect(name.hasPrefix("grid."), "\(name) must start with 'grid.'")
@@ -41,17 +41,25 @@ private func requireSendable<T: Sendable>(_: T.Type) {}
 }
 
 @Test func gridTabSelectParsingSupportsIndexAndIdentifierTargets() throws {
-    #expect(try UIKitDemoCapabilityContract.parseTabSelect(["index": 1]) == .index(1))
-    #expect(try UIKitDemoCapabilityContract.parseTabSelect(["id": "feed"]) == .tab(.feed))
+    #expect(try GridTabSelectPayload(index: 1, id: nil).selection() == .index(1))
+    #expect(try GridTabSelectPayload(index: nil, id: "feed").selection() == .tab(.feed))
 }
 
 @Test func gridHorizontalScrollRejectsAmbiguousTargets() {
     do {
-        _ = try UIKitDemoCapabilityContract.parseHorizontalScroll(["direction": "next", "id": "items"])
+        _ = try GridScrollHorizontalPayload(direction: "next", index: nil, id: "items").target()
         Issue.record("expected parseHorizontalScroll to reject multiple target selectors")
     } catch let error as UIKitDemoCapabilityError {
         #expect(error == .missingScrollTarget)
     } catch {
         Issue.record("expected UIKitDemoCapabilityError, got \(error)")
     }
+}
+
+@Test func tabSelectResponseAlwaysIncludesStatusField() {
+    let response = GridTabSelectResponse(selectedTab: .init(for: .feed))
+
+    #expect(response.status == "ok")
+    #expect(response.selectedTab == .init(for: .feed))
+    #expect(response.error == nil)
 }

@@ -1,71 +1,13 @@
 #if DEBUG
 import Foundation
 
-private struct UIKitDemoCodingKey: CodingKey {
-    let stringValue: String
-    let intValue: Int? = nil
-
-    init?(stringValue: String) {
-        self.stringValue = stringValue
-    }
-
-    init?(intValue: Int) {
-        return nil
-    }
-}
-
-indirect enum UIKitDemoResponseValue: Equatable, Sendable, Encodable {
-    case string(String)
-    case int(Int)
-    case array([UIKitDemoResponseValue])
-    case object([String: UIKitDemoResponseValue])
-
-    var foundationValue: Any {
-        switch self {
-        case .string(let value): return value
-        case .int(let value): return value
-        case .array(let values): return values.map(\.foundationValue)
-        case .object(let value): return value.mapValues(\.foundationValue)
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        switch self {
-        case .string(let value):
-            var container = encoder.singleValueContainer()
-            try container.encode(value)
-        case .int(let value):
-            var container = encoder.singleValueContainer()
-            try container.encode(value)
-        case .array(let values):
-            var container = encoder.unkeyedContainer()
-            for value in values {
-                try container.encode(value)
-            }
-        case .object(let value):
-            var container = encoder.container(keyedBy: UIKitDemoCodingKey.self)
-            for (key, value) in value {
-                guard let codingKey = UIKitDemoCodingKey(stringValue: key) else { continue }
-                try container.encode(value, forKey: codingKey)
-            }
-        }
-    }
-}
-
-struct UIKitDemoResponse: Equatable, Sendable, Encodable {
-    let payload: [String: UIKitDemoResponseValue]
-
-    var dictionary: [String: Any] {
-        payload.mapValues(\.foundationValue)
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: UIKitDemoCodingKey.self)
-        for (key, value) in payload {
-            guard let codingKey = UIKitDemoCodingKey(stringValue: key) else { continue }
-            try container.encode(value, forKey: codingKey)
-        }
-    }
+enum GridCapabilityNames {
+    static let tabSelect = "grid.tab.select"
+    static let feedAppend = "grid.feed.append"
+    static let feedReset = "grid.feed.reset"
+    static let scrollVertical = "grid.scroll.vertical"
+    static let scrollHorizontal = "grid.scroll.horizontal"
+    static let visible = "grid.visible"
 }
 
 enum UIKitDemoCapabilityError: Error, Equatable, Sendable {
@@ -107,20 +49,10 @@ enum UIKitDemoCapabilityError: Error, Equatable, Sendable {
             return "unexpected error"
         }
     }
-
-    var response: UIKitDemoResponse {
-        .init(payload: ["error": .string(message)])
-    }
 }
 
 enum UIKitDemoTabSelection: Equatable, Sendable {
     case index(Int)
-    case tab(UIKitDemoTab)
-}
-
-enum UIKitDemoTabTarget: Equatable, Sendable {
-    case active
-    case all
     case tab(UIKitDemoTab)
 }
 
@@ -137,38 +69,11 @@ enum UIKitDemoScrollPosition: String, Equatable, Sendable {
     case bottom
 }
 
-struct UIKitDemoAppendRequest: Equatable, Sendable {
-    let tab: UIKitDemoTabTarget
-    let title: String
-    let subtitle: String?
-}
+struct GridTabSelectPayload: Decodable, Equatable, Sendable {
+    let index: Int?
+    let id: String?
 
-struct UIKitDemoResetRequest: Equatable, Sendable {
-    let tab: UIKitDemoTabTarget
-}
-
-struct UIKitDemoVerticalScrollRequest: Equatable, Sendable {
-    let position: UIKitDemoScrollPosition
-}
-
-struct UIKitDemoHorizontalScrollRequest: Equatable, Sendable {
-    let target: UIKitDemoHorizontalTarget
-}
-
-enum UIKitDemoCapabilityContract {
-    enum Names {
-        static let tabSelect = "grid.tab.select"
-        static let feedAppend = "grid.feed.append"
-        static let feedReset = "grid.feed.reset"
-        static let scrollVertical = "grid.scroll.vertical"
-        static let scrollHorizontal = "grid.scroll.horizontal"
-        static let visible = "grid.visible"
-    }
-
-    static func parseTabSelect(_ params: [String: Any]) throws -> UIKitDemoTabSelection {
-        let index = intValue(params["index"])
-        let id = stringValue(params["id"])
-
+    func selection() throws -> UIKitDemoTabSelection {
         if index == nil, id == nil {
             throw UIKitDemoCapabilityError.missingTabIdentifier
         }
@@ -191,37 +96,40 @@ enum UIKitDemoCapabilityContract {
         }
         return .tab(tab)
     }
+}
 
-    static func parseAppend(_ params: [String: Any]) throws -> UIKitDemoAppendRequest {
-        guard let title = stringValue(params["title"]), !title.isEmpty else {
+struct GridFeedAppendPayload: Decodable, Equatable, Sendable {
+    let title: String?
+    let subtitle: String?
+
+    func validatedTitle() throws -> String {
+        guard let title, !title.isEmpty else {
             throw UIKitDemoCapabilityError.missingTitle
         }
-        return .init(
-            tab: try parseTabTarget(params["tab"], defaultingTo: .active),
-            title: title,
-            subtitle: stringValue(params["subtitle"])
-        )
+        return title
     }
+}
 
-    static func parseReset(_ params: [String: Any]) throws -> UIKitDemoResetRequest {
-        return .init(tab: try parseTabTarget(params["tab"], defaultingTo: .active, allowAll: true))
-    }
+struct GridScrollVerticalPayload: Decodable, Equatable, Sendable {
+    let position: String?
 
-    static func parseVerticalScroll(_ params: [String: Any]) throws -> UIKitDemoVerticalScrollRequest {
-        guard let positionName = stringValue(params["position"]) else {
+    func resolvedPosition() throws -> UIKitDemoScrollPosition {
+        guard let position else {
             throw UIKitDemoCapabilityError.unknownPosition("")
         }
-        guard let position = UIKitDemoScrollPosition(rawValue: positionName) else {
-            throw UIKitDemoCapabilityError.unknownPosition(positionName)
+        guard let parsed = UIKitDemoScrollPosition(rawValue: position) else {
+            throw UIKitDemoCapabilityError.unknownPosition(position)
         }
-        return .init(position: position)
+        return parsed
     }
+}
 
-    static func parseHorizontalScroll(_ params: [String: Any]) throws -> UIKitDemoHorizontalScrollRequest {
-        let direction = stringValue(params["direction"])
-        let index = intValue(params["index"])
-        let id = stringValue(params["id"])
+struct GridScrollHorizontalPayload: Decodable, Equatable, Sendable {
+    let direction: String?
+    let index: Int?
+    let id: String?
 
+    func target() throws -> UIKitDemoHorizontalTarget {
         let providedCount = [direction != nil, index != nil, id != nil].filter { $0 }.count
         guard providedCount > 0 else {
             throw UIKitDemoCapabilityError.missingScrollTarget
@@ -233,9 +141,9 @@ enum UIKitDemoCapabilityContract {
         if let direction {
             switch direction {
             case "next":
-                return .init(target: .next)
+                return .next
             case "previous":
-                return .init(target: .previous)
+                return .previous
             default:
                 throw UIKitDemoCapabilityError.missingScrollTarget
             }
@@ -245,7 +153,7 @@ enum UIKitDemoCapabilityContract {
             guard UIKitDemoTab.allCases.indices.contains(index) else {
                 throw UIKitDemoCapabilityError.tabIndexOutOfRange(index)
             }
-            return .init(target: .index(index))
+            return .index(index)
         }
 
         guard let id, !id.isEmpty else {
@@ -254,95 +162,161 @@ enum UIKitDemoCapabilityContract {
         guard let tab = UIKitDemoTab(rawValue: id) else {
             throw UIKitDemoCapabilityError.unknownTab(id)
         }
-        return .init(target: .tab(tab))
-    }
-
-    static func tabSelectResponse(for tab: UIKitDemoTab) -> UIKitDemoResponse {
-        .init(payload: [
-            "status": .string("ok"),
-            "selectedTab": .object(tab.responseValuePayload),
-        ])
-    }
-
-    static func appendResponse(tab: UIKitDemoTab, count: Int) -> UIKitDemoResponse {
-        .init(payload: [
-            "status": .string("ok"),
-            "tab": .string(tab.id),
-            "count": .int(count),
-        ])
-    }
-
-    static func resetResponse() -> UIKitDemoResponse {
-        .init(payload: ["status": .string("ok"), "tab": .string(UIKitDemoTab.feed.id)])
-    }
-
-    static func visibleResponse(
-        tab: UIKitDemoTab,
-        visible: [UIKitDemoResponseValue],
-        total: Int
-    ) -> UIKitDemoResponse {
-        .init(payload: [
-            "status": .string("ok"),
-            "tab": .string(tab.id),
-            "visible": .array(visible),
-            "count": .int(visible.count),
-            "total": .int(total),
-        ])
-    }
-
-    static func verticalScrollResponse(position: UIKitDemoScrollPosition, tab: UIKitDemoTab) -> UIKitDemoResponse {
-        .init(payload: [
-            "status": .string("ok"),
-            "position": .string(position.rawValue),
-            "tab": .string(tab.id),
-        ])
+        return .tab(tab)
     }
 }
 
-private func stringValue(_ value: Any?) -> String? {
-    value as? String
-}
+struct GridTabReference: Encodable, Equatable, Sendable {
+    let index: Int
+    let id: String
 
-private func intValue(_ value: Any?) -> Int? {
-    switch value {
-    case let number as Int:
-        return number
-    case let number as NSNumber:
-        if CFGetTypeID(number) == CFBooleanGetTypeID() {
-            return nil
-        }
-        let doubleValue = number.doubleValue
-        guard doubleValue.isFinite, floor(doubleValue) == doubleValue else {
-            return nil
-        }
-        guard doubleValue >= Double(Int.min), doubleValue <= Double(Int.max) else {
-            return nil
-        }
-        return Int(doubleValue)
-    default:
-        return nil
+    init(index: Int, id: String) {
+        self.index = index
+        self.id = id
+    }
+
+    init(for tab: UIKitDemoTab) {
+        self.init(index: UIKitDemoTab.allCases.firstIndex(of: tab) ?? 0, id: tab.id)
     }
 }
 
-private func parseTabTarget(
-    _ value: Any?,
-    defaultingTo defaultTarget: UIKitDemoTabTarget,
-    allowAll: Bool = false
-) throws -> UIKitDemoTabTarget {
-    guard let raw = stringValue(value) else {
-        return defaultTarget
+struct GridFeedCardSummary: Encodable, Equatable, Sendable {
+    let id: String
+    let title: String
+}
+
+enum GridVisibleItem: Encodable, Equatable, Sendable {
+    case item(String)
+    case card(GridFeedCardSummary)
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .item(let value):
+            try container.encode(value)
+        case .card(let value):
+            try container.encode(value)
+        }
+    }
+}
+
+private protocol GridCapabilityResponse: Encodable, Sendable {
+    init(error: String)
+}
+
+struct GridTabSelectResponse: GridCapabilityResponse, Encodable, Equatable, Sendable {
+    let status: String?
+    let selectedTab: GridTabReference?
+    let error: String?
+
+    init(selectedTab: GridTabReference) {
+        status = "ok"
+        self.selectedTab = selectedTab
+        error = nil
     }
 
-    if raw == "active" {
-        return .active
+    init(error: String) {
+        status = nil
+        selectedTab = nil
+        self.error = error
     }
-    if allowAll, raw == "all" {
-        return .all
+}
+
+struct GridFeedAppendResponse: GridCapabilityResponse, Encodable, Equatable, Sendable {
+    let status: String?
+    let tab: String?
+    let count: Int?
+    let error: String?
+
+    init(tab: UIKitDemoTab, count: Int) {
+        status = "ok"
+        self.tab = tab.id
+        self.count = count
+        error = nil
     }
-    guard let tab = UIKitDemoTab(rawValue: raw) else {
-        throw UIKitDemoCapabilityError.unknownTab(raw)
+
+    init(error: String) {
+        status = nil
+        tab = nil
+        count = nil
+        self.error = error
     }
-    return .tab(tab)
+}
+
+struct GridFeedResetResponse: GridCapabilityResponse, Encodable, Equatable, Sendable {
+    let status: String?
+    let tab: String?
+    let error: String?
+
+    init(tab: UIKitDemoTab) {
+        status = "ok"
+        self.tab = tab.id
+        error = nil
+    }
+
+    init(error: String) {
+        status = nil
+        tab = nil
+        self.error = error
+    }
+}
+
+struct GridScrollVerticalResponse: GridCapabilityResponse, Encodable, Equatable, Sendable {
+    let status: String?
+    let position: String?
+    let tab: String?
+    let error: String?
+
+    init(position: UIKitDemoScrollPosition, tab: UIKitDemoTab) {
+        status = "ok"
+        self.position = position.rawValue
+        self.tab = tab.id
+        error = nil
+    }
+
+    init(error: String) {
+        status = nil
+        position = nil
+        tab = nil
+        self.error = error
+    }
+}
+
+struct GridVisibleResponse: GridCapabilityResponse, Encodable, Equatable, Sendable {
+    let status: String?
+    let tab: String?
+    let visible: [GridVisibleItem]?
+    let count: Int?
+    let total: Int?
+    let error: String?
+
+    init(tab: UIKitDemoTab, visible: [GridVisibleItem], total: Int) {
+        status = "ok"
+        self.tab = tab.id
+        self.visible = visible
+        count = visible.count
+        self.total = total
+        error = nil
+    }
+
+    init(error: String) {
+        status = nil
+        tab = nil
+        visible = nil
+        count = nil
+        total = nil
+        self.error = error
+    }
+}
+
+private func handleGridCapability<Response: GridCapabilityResponse>(_ body: () throws -> Response) -> Response {
+    do {
+        return try body()
+    } catch let error as UIKitDemoCapabilityError {
+        return .init(error: error.message)
+    } catch {
+        return .init(error: UIKitDemoCapabilityError.unexpectedError.message)
+    }
 }
 
 #if canImport(UIKit)
@@ -356,22 +330,24 @@ private final class UIKitDemoCapabilityBridge: @unchecked Sendable {
         self.controller = controller
     }
 
-    func run(_ work: @escaping @MainActor @Sendable (UIKitDemoViewController) -> UIKitDemoResponse) -> UIKitDemoResponse {
+    func run<Response: Sendable>(
+        _ work: @escaping @MainActor @Sendable (UIKitDemoViewController) throws -> Response
+    ) rethrows -> Response {
         if Thread.isMainThread {
-            return MainActor.assumeIsolated {
+            return try MainActor.assumeIsolated {
                 guard let controller else {
-                    return UIKitDemoCapabilityError.controllerDeallocated.response
+                    throw UIKitDemoCapabilityError.controllerDeallocated
                 }
-                return work(controller)
+                return try work(controller)
             }
         }
 
-        return DispatchQueue.main.sync { [weak self] in
-            MainActor.assumeIsolated {
+        return try DispatchQueue.main.sync { [weak self] in
+            try MainActor.assumeIsolated {
                 guard let controller = self?.controller else {
-                    return UIKitDemoCapabilityError.controllerDeallocated.response
+                    throw UIKitDemoCapabilityError.controllerDeallocated
                 }
-                return work(controller)
+                return try work(controller)
             }
         }
     }
@@ -382,229 +358,139 @@ extension UIKitDemoViewController {
         let bridge = UIKitDemoCapabilityBridge(controller: self)
 
         #Remo {
-            struct GridTabSelectPayload: Decodable {
-                let index: Int?
-                let id: String?
-
-                var raw: [String: Any] {
-                    var raw: [String: Any] = [:]
-                    if let index {
-                        raw["index"] = index
-                    }
-                    if let id {
-                        raw["id"] = id
-                    }
-                    return raw
-                }
-            }
-
-            struct GridFeedAppendPayload: Decodable {
-                let tab: String?
-                let title: String?
-                let subtitle: String?
-
-                var raw: [String: Any] {
-                    var raw: [String: Any] = [:]
-                    if let tab {
-                        raw["tab"] = tab
-                    }
-                    if let title {
-                        raw["title"] = title
-                    }
-                    if let subtitle {
-                        raw["subtitle"] = subtitle
-                    }
-                    return raw
-                }
-            }
-
-            struct GridScrollVerticalPayload: Decodable {
-                let position: String?
-
-                var raw: [String: Any] {
-                    var raw: [String: Any] = [:]
-                    if let position {
-                        raw["position"] = position
-                    }
-                    return raw
-                }
-            }
-
-            struct GridScrollHorizontalPayload: Decodable {
-                let direction: String?
-                let index: Int?
-                let id: String?
-
-                var raw: [String: Any] {
-                    var raw: [String: Any] = [:]
-                    if let direction {
-                        raw["direction"] = direction
-                    }
-                    if let index {
-                        raw["index"] = index
-                    }
-                    if let id {
-                        raw["id"] = id
-                    }
-                    return raw
-                }
-            }
-
             enum GridTabSelect: RemoCapability {
-                static let name = UIKitDemoCapabilityContract.Names.tabSelect
+                static let name = GridCapabilityNames.tabSelect
                 typealias Request = GridTabSelectPayload
-                typealias Response = UIKitDemoResponse
+                typealias Response = GridTabSelectResponse
             }
 
             enum GridFeedAppend: RemoCapability {
-                static let name = UIKitDemoCapabilityContract.Names.feedAppend
+                static let name = GridCapabilityNames.feedAppend
                 typealias Request = GridFeedAppendPayload
-                typealias Response = UIKitDemoResponse
+                typealias Response = GridFeedAppendResponse
             }
 
             enum GridFeedReset: RemoCapability {
-                static let name = UIKitDemoCapabilityContract.Names.feedReset
-                typealias Response = UIKitDemoResponse
+                static let name = GridCapabilityNames.feedReset
+                typealias Response = GridFeedResetResponse
             }
 
             enum GridScrollVertical: RemoCapability {
-                static let name = UIKitDemoCapabilityContract.Names.scrollVertical
+                static let name = GridCapabilityNames.scrollVertical
                 typealias Request = GridScrollVerticalPayload
-                typealias Response = UIKitDemoResponse
+                typealias Response = GridScrollVerticalResponse
             }
 
             enum GridScrollHorizontal: RemoCapability {
-                static let name = UIKitDemoCapabilityContract.Names.scrollHorizontal
+                static let name = GridCapabilityNames.scrollHorizontal
                 typealias Request = GridScrollHorizontalPayload
-                typealias Response = UIKitDemoResponse
+                typealias Response = GridTabSelectResponse
             }
 
             enum GridVisible: RemoCapability {
-                static let name = UIKitDemoCapabilityContract.Names.visible
-                typealias Response = UIKitDemoResponse
+                static let name = GridCapabilityNames.visible
+                typealias Response = GridVisibleResponse
             }
 
             #remoScope(scopedTo: self) {
                 #remoCap(GridTabSelect.self) { req in
-                    do {
-                        let selection = try UIKitDemoCapabilityContract.parseTabSelect(req.raw)
-                        return bridge.run { controller in controller.handleTabSelect(selection) }
-                    } catch let error as UIKitDemoCapabilityError {
-                        return error.response
-                    } catch {
-                        return UIKitDemoCapabilityError.unexpectedError.response
+                    handleGridCapability {
+                        try bridge.run { controller in
+                            try controller.handleTabSelect(req.selection())
+                        }
                     }
                 }
 
                 #remoCap(GridFeedAppend.self) { req in
-                    do {
-                        let request = try UIKitDemoCapabilityContract.parseAppend(req.raw)
-                        return bridge.run { controller in controller.handleAppend(request) }
-                    } catch let error as UIKitDemoCapabilityError {
-                        return error.response
-                    } catch {
-                        return UIKitDemoCapabilityError.unexpectedError.response
+                    handleGridCapability {
+                        try bridge.run { controller in
+                            controller.handleAppend(title: try req.validatedTitle(), subtitle: req.subtitle)
+                        }
                     }
                 }
 
                 #remoCap(GridFeedReset.self) { _ in
-                    bridge.run { controller in controller.handleReset() }
+                    handleGridCapability {
+                        try bridge.run { controller in
+                            controller.handleReset()
+                        }
+                    }
                 }
 
                 #remoCap(GridScrollVertical.self) { req in
-                    do {
-                        let request = try UIKitDemoCapabilityContract.parseVerticalScroll(req.raw)
-                        return bridge.run { controller in controller.handleVerticalScroll(request) }
-                    } catch let error as UIKitDemoCapabilityError {
-                        return error.response
-                    } catch {
-                        return UIKitDemoCapabilityError.unexpectedError.response
+                    handleGridCapability {
+                        try bridge.run { controller in
+                            controller.handleVerticalScroll(position: try req.resolvedPosition())
+                        }
                     }
                 }
 
                 #remoCap(GridScrollHorizontal.self) { req in
-                    do {
-                        let request = try UIKitDemoCapabilityContract.parseHorizontalScroll(req.raw)
-                        return bridge.run { controller in controller.handleHorizontalScroll(request) }
-                    } catch let error as UIKitDemoCapabilityError {
-                        return error.response
-                    } catch {
-                        return UIKitDemoCapabilityError.unexpectedError.response
+                    handleGridCapability {
+                        try bridge.run { controller in
+                            try controller.handleHorizontalScroll(try req.target())
+                        }
                     }
                 }
 
                 #remoCap(GridVisible.self) { _ in
-                    bridge.run { controller in controller.handleVisible() }
+                    handleGridCapability {
+                        try bridge.run { controller in
+                            controller.handleVisible()
+                        }
+                    }
                 }
             }
         }
     }
 
-    private func handleTabSelect(_ selection: UIKitDemoTabSelection) -> UIKitDemoResponse {
-        do {
-            let tab = try store.resolveSelection(selection)
-            select(tab: tab, animated: true)
-            return UIKitDemoCapabilityContract.tabSelectResponse(for: tab)
-        } catch let error as UIKitDemoCapabilityError {
-            return error.response
-        } catch {
-            return UIKitDemoCapabilityError.unexpectedError.response
-        }
+    private func handleTabSelect(_ selection: UIKitDemoTabSelection) throws -> GridTabSelectResponse {
+        let tab = try store.resolveSelection(selection)
+        select(tab: tab, animated: true)
+        return .init(selectedTab: .init(for: tab))
     }
 
-    private func handleAppend(_ request: UIKitDemoAppendRequest) -> UIKitDemoResponse {
-        let resolvedTab = store.appendCard(title: request.title, subtitle: request.subtitle)
+    private func handleAppend(title: String, subtitle: String?) -> GridFeedAppendResponse {
+        let resolvedTab = store.appendCard(title: title, subtitle: subtitle)
         refreshFeedPage()
-        return UIKitDemoCapabilityContract.appendResponse(tab: resolvedTab, count: store.count(for: resolvedTab))
+        return .init(tab: resolvedTab, count: store.count(for: resolvedTab))
     }
 
-    private func handleReset() -> UIKitDemoResponse {
+    private func handleReset() -> GridFeedResetResponse {
         store.resetFeed()
         store.updateVerticalOffset(0, for: .feed)
         feedPage?.apply(cards: store.cards(for: .feed), restoringOffset: 0)
-        return UIKitDemoCapabilityContract.resetResponse()
+        return .init(tab: .feed)
     }
 
-    private func handleVerticalScroll(_ request: UIKitDemoVerticalScrollRequest) -> UIKitDemoResponse {
+    private func handleVerticalScroll(position: UIKitDemoScrollPosition) -> GridScrollVerticalResponse {
         let tab = store.selectedTab
         switch tab {
         case .feed:
-            feedPage?.scroll(to: request.position, animated: true)
+            feedPage?.scroll(to: position, animated: true)
         case .items:
-            itemsPage?.scroll(to: request.position, animated: true)
+            itemsPage?.scroll(to: position, animated: true)
         }
-        return UIKitDemoCapabilityContract.verticalScrollResponse(position: request.position, tab: tab)
+        return .init(position: position, tab: tab)
     }
 
-    private func handleHorizontalScroll(_ request: UIKitDemoHorizontalScrollRequest) -> UIKitDemoResponse {
-        do {
-            let tab = try store.resolveHorizontalTarget(request.target)
-            select(tab: tab, animated: true)
-            return UIKitDemoCapabilityContract.tabSelectResponse(for: tab)
-        } catch let error as UIKitDemoCapabilityError {
-            return error.response
-        } catch {
-            return UIKitDemoCapabilityError.unexpectedError.response
-        }
+    private func handleHorizontalScroll(_ target: UIKitDemoHorizontalTarget) throws -> GridTabSelectResponse {
+        let tab = try store.resolveHorizontalTarget(target)
+        select(tab: tab, animated: true)
+        return .init(selectedTab: .init(for: tab))
     }
 
-    private func handleVisible() -> UIKitDemoResponse {
+    private func handleVisible() -> GridVisibleResponse {
         let tab = store.selectedTab
         switch tab {
         case .feed:
-            let visible = feedPage?.visibleCards() ?? []
-            return UIKitDemoCapabilityContract.visibleResponse(
-                tab: tab,
-                visible: visible.map { .object(["id": .string($0.id), "title": .string($0.title)]) },
-                total: store.count(for: .feed)
-            )
+            let visible = (feedPage?.visibleCards() ?? []).map {
+                GridVisibleItem.card(.init(id: $0.id, title: $0.title))
+            }
+            return .init(tab: tab, visible: visible, total: store.count(for: .feed))
         case .items:
-            let visible = itemsPage?.visibleItems() ?? []
-            return UIKitDemoCapabilityContract.visibleResponse(
-                tab: tab,
-                visible: visible.map { .string($0) },
-                total: currentItems.count
-            )
+            let visible = (itemsPage?.visibleItems() ?? []).map(GridVisibleItem.item)
+            return .init(tab: tab, visible: visible, total: currentItems.count)
         }
     }
 }
