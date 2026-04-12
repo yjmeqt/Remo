@@ -1,6 +1,19 @@
 import Foundation
 
-indirect enum UIKitDemoResponseValue: Equatable, Sendable {
+private struct UIKitDemoCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int? = nil
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+    }
+
+    init?(intValue: Int) {
+        return nil
+    }
+}
+
+indirect enum UIKitDemoResponseValue: Equatable, Sendable, Encodable {
     case string(String)
     case int(Int)
     case array([UIKitDemoResponseValue])
@@ -14,13 +27,43 @@ indirect enum UIKitDemoResponseValue: Equatable, Sendable {
         case .object(let value): return value.mapValues(\.foundationValue)
         }
     }
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .string(let value):
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        case .int(let value):
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        case .array(let values):
+            var container = encoder.unkeyedContainer()
+            for value in values {
+                try container.encode(value)
+            }
+        case .object(let value):
+            var container = encoder.container(keyedBy: UIKitDemoCodingKey.self)
+            for (key, value) in value {
+                guard let codingKey = UIKitDemoCodingKey(stringValue: key) else { continue }
+                try container.encode(value, forKey: codingKey)
+            }
+        }
+    }
 }
 
-struct UIKitDemoResponse: Equatable, Sendable {
+struct UIKitDemoResponse: Equatable, Sendable, Encodable {
     let payload: [String: UIKitDemoResponseValue]
 
     var dictionary: [String: Any] {
         payload.mapValues(\.foundationValue)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: UIKitDemoCodingKey.self)
+        for (key, value) in payload {
+            guard let codingKey = UIKitDemoCodingKey(stringValue: key) else { continue }
+            try container.encode(value, forKey: codingKey)
+        }
     }
 }
 

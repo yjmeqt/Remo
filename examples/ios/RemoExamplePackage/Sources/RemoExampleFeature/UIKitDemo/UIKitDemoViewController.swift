@@ -12,18 +12,17 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
 
         func run(
             _ work: @escaping @MainActor @Sendable (UIKitDemoViewController) -> UIKitDemoResponse
-        ) -> [String: Any] {
+        ) -> UIKitDemoResponse {
             if Thread.isMainThread {
-                let response = MainActor.assumeIsolated {
+                return MainActor.assumeIsolated {
                     guard let controller else {
                         return UIKitDemoCapabilityError.controllerDeallocated.response
                     }
                     return work(controller)
                 }
-                return response.dictionary
             }
 
-            let response = DispatchQueue.main.sync { [weak self] in
+            return DispatchQueue.main.sync { [weak self] in
                 MainActor.assumeIsolated {
                     guard let controller = self?.controller else {
                         return UIKitDemoCapabilityError.controllerDeallocated.response
@@ -31,7 +30,6 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
                     return work(controller)
                 }
             }
-            return response.dictionary
         }
     }
 
@@ -49,17 +47,7 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
     private var itemsPage: UIKitDemoItemsPageViewController?
     private var currentItems: [String] = []
 
-    private var hasRegisteredCapabilities = false
     private var capabilityBridge: CapabilityBridge?
-
-    private let capabilityNames = [
-        UIKitDemoCapabilityContract.Names.tabSelect,
-        UIKitDemoCapabilityContract.Names.feedAppend,
-        UIKitDemoCapabilityContract.Names.feedReset,
-        UIKitDemoCapabilityContract.Names.scrollVertical,
-        UIKitDemoCapabilityContract.Names.scrollHorizontal,
-        UIKitDemoCapabilityContract.Names.visible,
-    ]
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -68,17 +56,17 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
         configurePages()
         refreshFeedPage()
         syncSelection(animated: false)
-        registerCapabilitiesIfNeeded()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        registerCapabilities()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let targetHeight = max(420, view.bounds.height - 220)
         pagerHeightConstraint?.constant = targetHeight
-    }
-
-    deinit {
-        capabilityNames.forEach { Remo.unregister($0) }
     }
 
     func updateItems(_ items: [String]) {
@@ -216,63 +204,166 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
         itemsPage = items
     }
 
-    private func registerCapabilitiesIfNeeded() {
-        guard !hasRegisteredCapabilities else { return }
-        hasRegisteredCapabilities = true
-
+    private func registerCapabilities() {
         let bridge = CapabilityBridge(controller: self)
         capabilityBridge = bridge
 
-        Remo.register(UIKitDemoCapabilityContract.Names.tabSelect) { params in
-            do {
-                let selection = try UIKitDemoCapabilityContract.parseTabSelect(params)
-                return bridge.run { controller in controller.handleTabSelect(selection) }
-            } catch let error as UIKitDemoCapabilityError {
-                return error.response.dictionary
-            } catch {
-                return UIKitDemoCapabilityError.unexpectedError.response.dictionary
+        #Remo {
+            struct GridTabSelectPayload: Decodable {
+                let index: Int?
+                let id: String?
+
+                var raw: [String: Any] {
+                    var raw: [String: Any] = [:]
+                    if let index {
+                        raw["index"] = index
+                    }
+                    if let id {
+                        raw["id"] = id
+                    }
+                    return raw
+                }
             }
-        }
 
-        Remo.register(UIKitDemoCapabilityContract.Names.feedAppend) { params in
-            do {
-                let request = try UIKitDemoCapabilityContract.parseAppend(params)
-                return bridge.run { controller in controller.handleAppend(request) }
-            } catch let error as UIKitDemoCapabilityError {
-                return error.response.dictionary
-            } catch {
-                return UIKitDemoCapabilityError.unexpectedError.response.dictionary
+            struct GridFeedAppendPayload: Decodable {
+                let tab: String?
+                let title: String?
+                let subtitle: String?
+
+                var raw: [String: Any] {
+                    var raw: [String: Any] = [:]
+                    if let tab {
+                        raw["tab"] = tab
+                    }
+                    if let title {
+                        raw["title"] = title
+                    }
+                    if let subtitle {
+                        raw["subtitle"] = subtitle
+                    }
+                    return raw
+                }
             }
-        }
 
-        Remo.register(UIKitDemoCapabilityContract.Names.feedReset) { _ in
-            bridge.run { controller in controller.handleReset() }
-        }
+            struct GridScrollVerticalPayload: Decodable {
+                let position: String?
 
-        Remo.register(UIKitDemoCapabilityContract.Names.scrollVertical) { params in
-            do {
-                let request = try UIKitDemoCapabilityContract.parseVerticalScroll(params)
-                return bridge.run { controller in controller.handleVerticalScroll(request) }
-            } catch let error as UIKitDemoCapabilityError {
-                return error.response.dictionary
-            } catch {
-                return UIKitDemoCapabilityError.unexpectedError.response.dictionary
+                var raw: [String: Any] {
+                    var raw: [String: Any] = [:]
+                    if let position {
+                        raw["position"] = position
+                    }
+                    return raw
+                }
             }
-        }
 
-        Remo.register(UIKitDemoCapabilityContract.Names.scrollHorizontal) { params in
-            do {
-                let request = try UIKitDemoCapabilityContract.parseHorizontalScroll(params)
-                return bridge.run { controller in controller.handleHorizontalScroll(request) }
-            } catch let error as UIKitDemoCapabilityError {
-                return error.response.dictionary
-            } catch {
-                return UIKitDemoCapabilityError.unexpectedError.response.dictionary
+            struct GridScrollHorizontalPayload: Decodable {
+                let direction: String?
+                let index: Int?
+                let id: String?
+
+                var raw: [String: Any] {
+                    var raw: [String: Any] = [:]
+                    if let direction {
+                        raw["direction"] = direction
+                    }
+                    if let index {
+                        raw["index"] = index
+                    }
+                    if let id {
+                        raw["id"] = id
+                    }
+                    return raw
+                }
             }
-        }
 
-        Remo.register(UIKitDemoCapabilityContract.Names.visible) { _ in
-            bridge.run { controller in controller.handleVisible() }
+            enum GridTabSelect: RemoCapability {
+                static let name = "grid.tab.select"
+                typealias Request = GridTabSelectPayload
+                typealias Response = UIKitDemoResponse
+            }
+
+            enum GridFeedAppend: RemoCapability {
+                static let name = "grid.feed.append"
+                typealias Request = GridFeedAppendPayload
+                typealias Response = UIKitDemoResponse
+            }
+
+            enum GridFeedReset: RemoCapability {
+                static let name = "grid.feed.reset"
+                typealias Response = UIKitDemoResponse
+            }
+
+            enum GridScrollVertical: RemoCapability {
+                static let name = "grid.scroll.vertical"
+                typealias Request = GridScrollVerticalPayload
+                typealias Response = UIKitDemoResponse
+            }
+
+            enum GridScrollHorizontal: RemoCapability {
+                static let name = "grid.scroll.horizontal"
+                typealias Request = GridScrollHorizontalPayload
+                typealias Response = UIKitDemoResponse
+            }
+
+            enum GridVisible: RemoCapability {
+                static let name = "grid.visible"
+                typealias Response = UIKitDemoResponse
+            }
+
+            #remoScope(scopedTo: self) {
+                #remoCap(GridTabSelect.self) { req in
+                    do {
+                        let selection = try UIKitDemoCapabilityContract.parseTabSelect(req.raw)
+                        return bridge.run { controller in controller.handleTabSelect(selection) }
+                    } catch let error as UIKitDemoCapabilityError {
+                        return error.response
+                    } catch {
+                        return UIKitDemoCapabilityError.unexpectedError.response
+                    }
+                }
+
+                #remoCap(GridFeedAppend.self) { req in
+                    do {
+                        let request = try UIKitDemoCapabilityContract.parseAppend(req.raw)
+                        return bridge.run { controller in controller.handleAppend(request) }
+                    } catch let error as UIKitDemoCapabilityError {
+                        return error.response
+                    } catch {
+                        return UIKitDemoCapabilityError.unexpectedError.response
+                    }
+                }
+
+                #remoCap(GridFeedReset.self) { _ in
+                    bridge.run { controller in controller.handleReset() }
+                }
+
+                #remoCap(GridScrollVertical.self) { req in
+                    do {
+                        let request = try UIKitDemoCapabilityContract.parseVerticalScroll(req.raw)
+                        return bridge.run { controller in controller.handleVerticalScroll(request) }
+                    } catch let error as UIKitDemoCapabilityError {
+                        return error.response
+                    } catch {
+                        return UIKitDemoCapabilityError.unexpectedError.response
+                    }
+                }
+
+                #remoCap(GridScrollHorizontal.self) { req in
+                    do {
+                        let request = try UIKitDemoCapabilityContract.parseHorizontalScroll(req.raw)
+                        return bridge.run { controller in controller.handleHorizontalScroll(request) }
+                    } catch let error as UIKitDemoCapabilityError {
+                        return error.response
+                    } catch {
+                        return UIKitDemoCapabilityError.unexpectedError.response
+                    }
+                }
+
+                #remoCap(GridVisible.self) { _ in
+                    bridge.run { controller in controller.handleVisible() }
+                }
+            }
         }
     }
 

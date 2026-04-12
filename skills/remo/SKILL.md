@@ -75,7 +75,7 @@ Every failed checkpoint gets its own report entry. Do not overwrite failed evide
 
 ## Step 5: Add Verification Nodes When Needed
 
-If the UI does not expose enough information, register debug-only verification capabilities.
+If the UI does not expose enough information, register Remo-only verification capabilities.
 
 Good candidates:
 
@@ -89,15 +89,30 @@ Pattern:
 ```swift
 import RemoSwift
 
-// The #remo macro strips this from release builds automatically — no #if DEBUG needed.
-#remo("verify.feed_count") { _ in
-    return ["count": FeedRepository.shared.items.count]
+// The #Remo debug island strips all nested Remo code from release builds automatically.
+.task {
+    await #Remo {
+        struct VerifyFeedCountResponse: Encodable {
+            let count: Int
+        }
+
+        enum VerifyFeedCount: RemoCapability {
+            static let name = "verify.feed_count"
+            typealias Response = VerifyFeedCountResponse
+        }
+
+        await #remoScope {
+            #remoCap(VerifyFeedCount.self) { _ in
+                return VerifyFeedCountResponse(count: FeedRepository.shared.items.count)
+            }
+        }
+    }
 }
 ```
 
-`#remo` handlers execute on a background callback path, so any UI mutation or actor-isolated work must be explicitly handed off instead of performed directly in the callback.
+`#remoCap` handlers execute on a background callback path, so any UI mutation or actor-isolated work must be explicitly handed off instead of performed directly in the callback.
 
-The `#remo` macro ensures all Remo code is fully stripped from release builds — no manual `#if DEBUG` wrappers needed.
+The `#Remo` debug island ensures all nested Remo code is fully stripped from release builds — no manual `#if DEBUG` wrappers needed.
 
 ## Step 6: Write the Summary
 

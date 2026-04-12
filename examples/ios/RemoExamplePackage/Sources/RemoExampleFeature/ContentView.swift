@@ -1,70 +1,6 @@
 import SwiftUI
 import RemoSwift
 
-// MARK: - Models
-
-struct LogEntry: Identifiable {
-    let id = UUID()
-    let timestamp: Date
-    let capability: String
-    let params: String
-    let result: String
-}
-
-// MARK: - App Store
-
-@Observable
-public final class AppStore: @unchecked Sendable {
-    public var counter: Int = 0
-    public var username: String = "Guest"
-    public var items: [String] = [
-        "Morning Standup", "Design Review", "Sprint Planning", "API Integration",
-        "Code Review", "Remo Demo", "Release Notes", "User Testing",
-        "Launch Prep", "Post-mortem", "Architecture Review", "Performance Audit",
-        "Accessibility Pass", "Localization Check", "Security Review", "Dependency Update",
-        "Changelog Draft", "Beta Feedback", "Stakeholder Sync", "Ship It",
-    ]
-    public var currentRoute: String = "home"
-
-    var accentColorName: String = "blue"
-    var toastMessage: String?
-    var showConfetti: Bool = false
-    var activityLog: [LogEntry] = []
-
-    public init() {}
-
-    var accentColor: Color {
-        switch accentColorName {
-        case "red": .red
-        case "green": .green
-        case "orange": .orange
-        case "purple": .purple
-        case "pink": .pink
-        case "yellow": .yellow
-        case "mint": .mint
-        case "teal": .teal
-        default: .blue
-        }
-    }
-
-    func log(capability: String, params: String, result: String) {
-        let entry = LogEntry(
-            timestamp: .now,
-            capability: capability,
-            params: params,
-            result: result
-        )
-        DispatchQueue.main.async { [self] in
-            activityLog.insert(entry, at: 0)
-            if activityLog.count > 200 {
-                activityLog = Array(activityLog.prefix(200))
-            }
-        }
-    }
-}
-
-// MARK: - Root View
-
 public struct ContentView: View {
     @Environment(AppStore.self) private var store
 
@@ -97,566 +33,277 @@ public struct ContentView: View {
             }
         }
         .task {
-            let store = store  // rebind as `let` for @Sendable closures in #remo handlers
-            await #remo {
-                #remo("navigate") { params in
-                    let route: String = params["route", default: "home"]
-                    DispatchQueue.main.async { store.currentRoute = route }
-                    return ["status": "ok", "route": route]
+            let store = store  // rebind as `let` for @Sendable closures in #remoCap handlers below
+            await #Remo {
+                struct StatusResponse: Encodable {
+                    let status: String = "ok"
                 }
-                #remo("state.get") { params in
-                    let key: String = params["key", default: ""]
-                    switch key {
-                    case "counter": return ["value": store.counter]
-                    case "username": return ["value": store.username]
-                    case "items": return ["value": store.items]
-                    case "currentRoute": return ["value": store.currentRoute]
-                    case "accentColor": return ["value": store.accentColorName]
-                    default: return ["error": "unknown key: \(key)"]
-                    }
+
+                struct RouteResponse: Encodable {
+                    let status: String = "ok"
+                    let route: String
                 }
-                #remo("state.set") { params in
-                    let key: String = params["key", default: ""]
-                    let intValue: Int? = params["value"]
-                    let stringValue: String? = params["value"]
-                    let arrayValue: [String]? = params["value"]
-                    DispatchQueue.main.async {
-                        switch key {
-                        case "counter": if let v = intValue { store.counter = v }
-                        case "username": if let v = stringValue { store.username = v }
-                        case "items": if let v = arrayValue { store.items = v }
-                        default: break
+
+                struct ColorResponse: Encodable {
+                    let status: String = "ok"
+                    let color: String
+                }
+
+                struct NameResponse: Encodable {
+                    let status: String = "ok"
+                    let name: String
+                }
+
+                enum StateValue: Encodable {
+                    case int(Int)
+                    case string(String)
+                    case strings([String])
+
+                    func encode(to encoder: Encoder) throws {
+                        var container = encoder.singleValueContainer()
+                        switch self {
+                        case .int(let value):
+                            try container.encode(value)
+                        case .string(let value):
+                            try container.encode(value)
+                        case .strings(let value):
+                            try container.encode(value)
                         }
                     }
-                    return ["status": "ok"]
                 }
-                #remo("ui.toast") { params in
-                    let message: String = params["message", default: "Hello from Remo!"]
-                    DispatchQueue.main.async {
-                        withAnimation(.spring(duration: 0.4)) {
-                            store.toastMessage = message
+
+                struct StateGetResponse: Encodable {
+                    let value: StateValue?
+                    let error: String?
+
+                    init(value: StateValue) {
+                        self.value = value
+                        self.error = nil
+                    }
+
+                    init(error: String) {
+                        self.value = nil
+                        self.error = error
+                    }
+                }
+
+                enum StateSetValue: Decodable {
+                    case int(Int)
+                    case string(String)
+                    case strings([String])
+
+                    init(from decoder: Decoder) throws {
+                        let container = try decoder.singleValueContainer()
+                        if let value = try? container.decode(Int.self) {
+                            self = .int(value)
+                        } else if let value = try? container.decode(String.self) {
+                            self = .string(value)
+                        } else if let value = try? container.decode([String].self) {
+                            self = .strings(value)
+                        } else {
+                            throw DecodingError.typeMismatch(
+                                StateSetValue.self,
+                                .init(
+                                    codingPath: decoder.codingPath,
+                                    debugDescription: "Expected Int, String, or [String]"
+                                )
+                            )
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                if store.toastMessage == message {
-                                    store.toastMessage = nil
+                    }
+                }
+
+                enum Navigate: RemoCapability {
+                    static let name = "navigate"
+
+                    struct Request: Decodable {
+                        let route: String?
+                    }
+
+                    typealias Response = RouteResponse
+                }
+
+                enum StateGet: RemoCapability {
+                    static let name = "state.get"
+
+                    struct Request: Decodable {
+                        let key: String
+                    }
+
+                    typealias Response = StateGetResponse
+                }
+
+                enum StateSet: RemoCapability {
+                    static let name = "state.set"
+
+                    struct Request: Decodable {
+                        let key: String
+                        let value: StateSetValue
+                    }
+
+                    typealias Response = StatusResponse
+                }
+
+                enum ShowToast: RemoCapability {
+                    static let name = "ui.toast"
+
+                    struct Request: Decodable {
+                        let message: String?
+                    }
+
+                    typealias Response = StatusResponse
+                }
+
+                enum ShowConfetti: RemoCapability {
+                    static let name = "ui.confetti"
+                }
+
+                enum SetAccentColor: RemoCapability {
+                    static let name = "ui.setAccentColor"
+
+                    struct Request: Decodable {
+                        let color: String?
+                    }
+
+                    typealias Response = ColorResponse
+                }
+
+                enum AddItem: RemoCapability {
+                    static let name = "items.add"
+
+                    struct Request: Decodable {
+                        let name: String?
+                    }
+
+                    typealias Response = NameResponse
+                }
+
+                enum RemoveItem: RemoCapability {
+                    static let name = "items.remove"
+
+                    struct Request: Decodable {
+                        let name: String?
+                    }
+
+                    typealias Response = NameResponse
+                }
+
+                enum ClearItems: RemoCapability {
+                    static let name = "items.clear"
+                }
+
+                await #remoScope {
+                    #remoCap(Navigate.self) { req in
+                        let route = req.route ?? "home"
+                        Task { @MainActor in
+                            store.currentRoute = route
+                        }
+                        return RouteResponse(route: route)
+                    }
+
+                    #remoCap(StateGet.self) { req in
+                        switch req.key {
+                        case "counter":
+                            return StateGetResponse(value: .int(store.counter))
+                        case "username":
+                            return StateGetResponse(value: .string(store.username))
+                        case "items":
+                            return StateGetResponse(value: .strings(store.items))
+                        case "currentRoute":
+                            return StateGetResponse(value: .string(store.currentRoute))
+                        case "accentColor":
+                            return StateGetResponse(value: .string(store.accentColorName))
+                        default:
+                            return StateGetResponse(error: "unknown key: \(req.key)")
+                        }
+                    }
+
+                    #remoCap(StateSet.self) { req in
+                        Task { @MainActor in
+                            switch (req.key, req.value) {
+                            case ("counter", .int(let value)):
+                                store.counter = value
+                            case ("username", .string(let value)):
+                                store.username = value
+                            case ("items", .strings(let value)):
+                                store.items = value
+                            default:
+                                break
+                            }
+                        }
+                        return StatusResponse()
+                    }
+
+                    #remoCap(ShowToast.self) { req in
+                        let message = req.message ?? "Hello from Remo!"
+                        Task { @MainActor in
+                            withAnimation(.spring(duration: 0.4)) {
+                                store.toastMessage = message
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    if store.toastMessage == message {
+                                        store.toastMessage = nil
+                                    }
                                 }
                             }
                         }
+                        return StatusResponse()
                     }
-                    return ["status": "ok"]
-                }
-                #remo("ui.confetti") { _ in
-                    DispatchQueue.main.async {
-                        store.showConfetti = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                            store.showConfetti = false
-                        }
-                    }
-                    return ["status": "ok"]
-                }
-                #remo("ui.setAccentColor") { params in
-                    let color: String = params["color", default: "blue"]
-                    DispatchQueue.main.async {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            store.accentColorName = color
-                        }
-                    }
-                    return ["status": "ok", "color": color]
-                }
-                #remo("items.add") { params in
-                    let name: String = params["name", default: "New Item"]
-                    DispatchQueue.main.async {
-                        withAnimation { store.items.append(name) }
-                    }
-                    return ["status": "ok", "name": name]
-                }
-                #remo("items.remove") { params in
-                    let name: String = params["name", default: ""]
-                    DispatchQueue.main.async {
-                        withAnimation {
-                            if let idx = store.items.firstIndex(of: name) {
-                                store.items.remove(at: idx)
+
+                    #remoCap(ShowConfetti.self) { _ in
+                        Task { @MainActor in
+                            store.showConfetti = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                store.showConfetti = false
                             }
                         }
+                        return RemoOK()
                     }
-                    return ["status": "ok", "name": name]
-                }
-                #remo("items.clear") { _ in
-                    DispatchQueue.main.async {
-                        withAnimation { store.items.removeAll() }
+
+                    #remoCap(SetAccentColor.self) { req in
+                        let color = req.color ?? "blue"
+                        Task { @MainActor in
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                store.accentColorName = color
+                            }
+                        }
+                        return ColorResponse(color: color)
                     }
-                    return ["status": "ok"]
+
+                    #remoCap(AddItem.self) { req in
+                        let name = req.name ?? "New Item"
+                        Task { @MainActor in
+                            withAnimation {
+                                store.items.append(name)
+                            }
+                        }
+                        return NameResponse(name: name)
+                    }
+
+                    #remoCap(RemoveItem.self) { req in
+                        let name = req.name ?? ""
+                        Task { @MainActor in
+                            withAnimation {
+                                if let idx = store.items.firstIndex(of: name) {
+                                    store.items.remove(at: idx)
+                                }
+                            }
+                        }
+                        return NameResponse(name: name)
+                    }
+
+                    #remoCap(ClearItems.self) { _ in
+                        Task { @MainActor in
+                            withAnimation {
+                                store.items.removeAll()
+                            }
+                        }
+                        return RemoOK()
+                    }
                 }
-                await Remo.keepAlive(
-                    "navigate", "state.get", "state.set",
-                    "ui.toast", "ui.confetti", "ui.setAccentColor",
-                    "items.add", "items.remove", "items.clear"
-                )
             }
         }
     }
 
     public init() {}
-}
-
-// MARK: - Home
-
-struct HomeView: View {
-    @Environment(AppStore.self) private var store
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 28) {
-                ConnectionBadge()
-
-                Spacer()
-
-                Text("Hello, \(store.username)!")
-                    .font(.title2.weight(.medium))
-
-                Text("\(store.counter)")
-                    .font(.system(size: 72, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: Double(store.counter)))
-                    .animation(.snappy, value: store.counter)
-
-                Text("Counter")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(1.5)
-
-                HStack(spacing: 16) {
-                    CounterButton(label: "−", color: .red) {
-                        withAnimation { store.counter -= 1 }
-                    }
-                    CounterButton(label: "+", color: .green) {
-                        withAnimation { store.counter += 1 }
-                    }
-                    CounterButton(label: "Reset", color: .secondary) {
-                        withAnimation { store.counter = 0 }
-                    }
-                }
-
-                Spacer()
-
-                if store.currentRoute != "home" {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.triangle.turn.up.right.diamond")
-                        Text(store.currentRoute)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.ultraThinMaterial, in: Capsule())
-                }
-            }
-            .padding()
-            .navigationTitle("Remo")
-            .task {
-                await #remo {
-                    #remo("counter.increment") { params in
-                        let amount: Int = params["amount", default: 1]
-                        DispatchQueue.main.async { store.counter += amount }
-                        return ["status": "ok", "amount": amount]
-                    }
-                    await Remo.keepAlive("counter.increment")
-                }
-            }
-        }
-    }
-}
-
-struct CounterButton: View {
-    let label: String
-    let color: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.title3.weight(.semibold))
-                .frame(minWidth: 56, minHeight: 44)
-        }
-        .buttonStyle(.bordered)
-        .tint(color)
-    }
-}
-
-struct ConnectionBadge: View {
-    var body: some View {
-        let port = Remo.port
-
-        HStack(spacing: 8) {
-            Circle()
-                .fill(port > 0 ? .green : .red)
-                .frame(width: 8, height: 8)
-
-            if port > 0 {
-                Text("Remo on port \(port)")
-            } else {
-                Text("Remo offline")
-            }
-        }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: Capsule())
-    }
-}
-
-// MARK: - Items
-
-struct ListPage: View {
-    @Environment(AppStore.self) private var store
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if store.items.isEmpty {
-                    ContentUnavailableView(
-                        "No Items",
-                        systemImage: "tray",
-                        description: Text("Add items remotely:\nremo call items.add '{\"name\": \"Hello\"}'")
-                    )
-                } else {
-                    List {
-                        ForEach(store.items, id: \.self) { item in
-                            NavigationLink(item) {
-                                DetailPage(item: item)
-                            }
-                        }
-                        .onDelete { indexSet in
-                            withAnimation { store.items.remove(atOffsets: indexSet) }
-                        }
-                    }
-                    .animation(.default, value: store.items)
-                }
-            }
-            .navigationTitle("Items (\(store.items.count))")
-            .toolbar {
-                if !store.items.isEmpty {
-                    Button("Clear") {
-                        withAnimation { store.items.removeAll() }
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct DetailPage: View {
-    let item: String
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "cube.box")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text(item)
-                .font(.title)
-            Text("Detail view for \(item)")
-                .foregroundStyle(.secondary)
-        }
-        .navigationTitle(item)
-        .task {
-            await #remo {
-                #remo("detail.getInfo") { [item] _ in
-                    return ["item": item]
-                }
-                await Remo.keepAlive("detail.getInfo")
-            }
-        }
-    }
-}
-
-
-// MARK: - Activity Log
-
-struct ActivityLogView: View {
-    @Environment(AppStore.self) private var store
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if store.activityLog.isEmpty {
-                    ContentUnavailableView(
-                        "No Activity",
-                        systemImage: "waveform.slash",
-                        description: Text("RPC calls will appear here in real time.\nTry: remo call __ping '{}' -a 127.0.0.1:\(Remo.port)")
-                    )
-                } else {
-                    List(store.activityLog) { entry in
-                        LogEntryRow(entry: entry)
-                    }
-                    .animation(.default, value: store.activityLog.map(\.id))
-                }
-            }
-            .navigationTitle("Activity")
-            .toolbar {
-                if !store.activityLog.isEmpty {
-                    Button("Clear") {
-                        withAnimation { store.activityLog.removeAll() }
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct LogEntryRow: View {
-    let entry: LogEntry
-
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss.SSS"
-        return f
-    }()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(entry.capability)
-                    .font(.headline.monospaced())
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text(Self.timeFormatter.string(from: entry.timestamp))
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-            }
-
-            if entry.params != "{}" {
-                Text(entry.params)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Text("→ \(entry.result)")
-                .font(.caption.monospaced())
-                .foregroundStyle(.green)
-                .lineLimit(2)
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Settings
-
-struct SettingsPage: View {
-    @Environment(AppStore.self) private var store
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Profile") {
-                    @Bindable var s = store
-                    TextField("Username", text: $s.username)
-                }
-
-                Section("Appearance") {
-                    let colors = ["blue", "purple", "red", "green", "orange", "pink", "teal", "mint"]
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                        ForEach(colors, id: \.self) { name in
-                            ColorDot(
-                                name: name,
-                                isSelected: store.accentColorName == name
-                            ) {
-                                withAnimation { store.accentColorName = name }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                Section("Remo") {
-                    LabeledContent("Status") {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(Remo.port > 0 ? .green : .red)
-                                .frame(width: 8, height: 8)
-                            Text(Remo.port > 0 ? "Running" : "Stopped")
-                        }
-                    }
-                    LabeledContent("Port", value: "\(Remo.port)")
-                    LabeledContent("Capabilities") {
-                        Text("\(Remo.listCapabilities().count)")
-                    }
-                }
-
-                Section("Try It") {
-                    CopyableCommand(
-                        label: "Toast",
-                        command: "remo call -a 127.0.0.1:\(Remo.port) ui.toast '{\"message\": \"Hello!\"}'"
-                    )
-                    CopyableCommand(
-                        label: "Confetti",
-                        command: "remo call -a 127.0.0.1:\(Remo.port) ui.confetti '{}'"
-                    )
-                    CopyableCommand(
-                        label: "Add Item",
-                        command: "remo call -a 127.0.0.1:\(Remo.port) items.add '{\"name\": \"Remote\"}'"
-                    )
-                    CopyableCommand(
-                        label: "Recolor",
-                        command: "remo call -a 127.0.0.1:\(Remo.port) ui.setAccentColor '{\"color\": \"purple\"}'"
-                    )
-                }
-            }
-            .navigationTitle("Settings")
-        }
-    }
-}
-
-struct ColorDot: View {
-    let name: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    private var color: Color {
-        switch name {
-        case "red": .red
-        case "green": .green
-        case "orange": .orange
-        case "purple": .purple
-        case "pink": .pink
-        case "yellow": .yellow
-        case "mint": .mint
-        case "teal": .teal
-        default: .blue
-        }
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Circle()
-                .fill(color.gradient)
-                .frame(width: 36, height: 36)
-                .overlay {
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.caption.bold())
-                            .foregroundStyle(.white)
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(name)
-    }
-}
-
-struct CopyableCommand: View {
-    let label: String
-    let command: String
-    @State private var copied = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.subheadline.weight(.medium))
-            Text(command)
-                .font(.caption2.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            UIPasteboard.general.string = command
-            withAnimation { copied = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                withAnimation { copied = false }
-            }
-        }
-        .overlay(alignment: .trailing) {
-            if copied {
-                Text("Copied!")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.green)
-                    .transition(.opacity.combined(with: .scale))
-            }
-        }
-    }
-}
-
-// MARK: - Overlays
-
-struct ToastOverlay: View {
-    @Environment(AppStore.self) private var store
-
-    var body: some View {
-        if let message = store.toastMessage {
-            HStack(spacing: 10) {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .foregroundStyle(.white.opacity(0.8))
-                Text(message)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.ultraThinMaterial.opacity(0.9))
-            .background(Color.accentColor.opacity(0.85))
-            .clipShape(Capsule())
-            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
-            .padding(.top, 60)
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .zIndex(100)
-        }
-    }
-}
-
-struct ConfettiOverlay: View {
-    @State private var particles: [ConfettiParticle] = []
-
-    var body: some View {
-        GeometryReader { geo in
-            ForEach(particles) { particle in
-                Circle()
-                    .fill(particle.color)
-                    .frame(width: particle.size, height: particle.size)
-                    .position(particle.position)
-                    .opacity(particle.opacity)
-            }
-        }
-        .allowsHitTesting(false)
-        .ignoresSafeArea()
-        .onAppear { startConfetti() }
-    }
-
-    private func startConfetti() {
-        particles = (0..<80).map { _ in
-            ConfettiParticle(
-                position: CGPoint(
-                    x: CGFloat.random(in: 0...UIScreen.main.bounds.width),
-                    y: -20
-                ),
-                color: [Color.red, .blue, .green, .yellow, .purple, .orange, .pink].randomElement()!,
-                size: CGFloat.random(in: 6...12),
-                opacity: 1.0
-            )
-        }
-
-        for i in particles.indices {
-            let delay = Double.random(in: 0...0.5)
-            let targetY = CGFloat.random(in: 200...UIScreen.main.bounds.height + 100)
-            let targetX = particles[i].position.x + CGFloat.random(in: -80...80)
-
-            withAnimation(.easeOut(duration: Double.random(in: 1.5...2.5)).delay(delay)) {
-                particles[i].position = CGPoint(x: targetX, y: targetY)
-                particles[i].opacity = 0
-            }
-        }
-    }
-}
-
-struct ConfettiParticle: Identifiable {
-    let id = UUID()
-    var position: CGPoint
-    let color: Color
-    let size: CGFloat
-    var opacity: Double
 }
