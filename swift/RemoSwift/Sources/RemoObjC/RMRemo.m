@@ -1,4 +1,7 @@
 #import "RMRemo.h"
+
+#if TARGET_OS_IOS
+
 @import CRemo;
 
 #if DEBUG
@@ -111,4 +114,24 @@ static dispatch_once_t _startOnce;
 
 @end
 
-#endif
+#endif // DEBUG
+
+#else // not TARGET_OS_IOS
+
+// macOS stub — RemoObjC is an iOS-only library; this stub satisfies the
+// compiler when building for macOS (e.g. running `swift test`).
+@implementation RMRemo
+
++ (uint16_t)defaultPort { return 9930; }
++ (uint16_t)port { return 0; }
++ (void)ensureStarted {}
++ (void)startWithPort:(uint16_t)port {}
++ (void)start {}
++ (void)stop {}
++ (void)registerCapability:(NSString *)name handler:(RMRemoCapabilityHandler)handler {}
++ (BOOL)unregisterCapability:(NSString *)name { return NO; }
++ (NSArray<NSString *> *)listCapabilities { return @[]; }
+
+@end
+
+#endif // TARGET_OS_IOS

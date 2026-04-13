@@ -501,7 +501,7 @@ mod apple {
             return None;
         }
 
-        let annex_b = super::avcc_to_annex_b(&raw);
+        let annex_b = avcc_to_annex_b(&raw);
 
         let pts = CMSampleBufferGetPresentationTimeStamp(sample_buffer);
         let timestamp_us = if pts.timescale > 0 {

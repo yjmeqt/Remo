@@ -36,12 +36,3 @@ enum UIKitDemoSeed {
         cardsByTab[tab] ?? []
     }
 }
-
-extension UIKitDemoTab {
-    var responseValuePayload: [String: UIKitDemoResponseValue] {
-        [
-            "index": .int(UIKitDemoTab.allCases.firstIndex(of: self) ?? 0),
-            "id": .string(id),
-        ]
-    }
-}

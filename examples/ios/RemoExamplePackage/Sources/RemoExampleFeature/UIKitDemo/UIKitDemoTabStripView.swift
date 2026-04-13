@@ -5,19 +5,19 @@ final class UIKitDemoTabStripView: UIView {
     private let scrollView = UIScrollView()
     private let stackView = UIStackView()
     private var buttons: [UIKitDemoTab: UIButton] = [:]
-
+    
     var onSelection: ((UIKitDemoTab) -> Void)?
-
+    
     override init(frame: CGRect) {
         super.init(frame: frame)
         configure()
     }
-
+    
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-
+    
     func updateTabs(_ tabs: [UIKitDemoTab], selected: UIKitDemoTab) {
         if buttons.isEmpty {
             tabs.forEach { tab in
@@ -37,7 +37,7 @@ final class UIKitDemoTabStripView: UIView {
                 buttons[tab] = button
             }
         }
-
+        
         buttons.forEach { tab, button in
             var configuration = button.configuration ?? .filled()
             let isSelected = tab == selected
@@ -45,19 +45,19 @@ final class UIKitDemoTabStripView: UIView {
             configuration.baseForegroundColor = isSelected ? .systemBackground : .label
             button.configuration = configuration
         }
-
+        
         if let selectedButton = buttons[selected] {
             scrollView.scrollRectToVisible(selectedButton.frame.insetBy(dx: -16, dy: 0), animated: true)
         }
     }
-
+    
     private func configure() {
         scrollView.showsHorizontalScrollIndicator = false
-
+        
         stackView.axis = .horizontal
         stackView.alignment = .fill
         stackView.spacing = 12
-
+        
         addSubview(scrollView)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -66,7 +66,7 @@ final class UIKitDemoTabStripView: UIView {
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-
+        
         scrollView.addSubview(stackView)
         stackView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
