@@ -1,11 +1,11 @@
-import { RefreshCw, Shield, Wifi } from "lucide-react";
+import { Command, Shield, Wifi } from "lucide-react";
 
 const VALUE_PROPS = [
   {
-    icon: RefreshCw,
-    title: "Closed-Loop Autonomy",
+    icon: Command,
+    title: "Programmable App Control",
     description:
-      "Agent writes code, builds, invokes capabilities, inspects UI, verifies results — no human in the loop.",
+      "Expose named capabilities instead of forcing agents to work only through taps and pixels. Remo lets them call the app in its own language.",
   },
   {
     icon: Shield,
@@ -15,9 +15,9 @@ const VALUE_PROPS = [
   },
   {
     icon: Wifi,
-    title: "Universal Discovery",
+    title: "Runtime Discovery",
     description:
-      "USB for physical devices, Bonjour for simulators — agents find devices automatically.",
+      "USB for physical devices, Bonjour for simulators - agents discover available endpoints automatically at runtime.",
   },
 ];
 
@@ -26,12 +26,13 @@ export function VisionSection() {
     <section className="py-20 px-6 border-t border-zinc-800">
       <div className="max-w-4xl mx-auto text-center">
         <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-zinc-50">
-          How Remo Harnesses iOS Development
+          Where Remo Fits
         </h2>
         <p className="text-zinc-500 mt-3 max-w-2xl mx-auto">
-          Remo gives AI agents a direct interface to iOS applications — turning
-          the simulator into a programmable environment where agents can see,
-          act, and verify autonomously.
+          Remo gives AI agents a semantic interface to running iOS apps.
+          Use it for in-app capability registration and runtime control, then
+          pair it with xcodebuildmcp when you need simulator automation and
+          inspection outside the app boundary.
         </p>
       </div>
 

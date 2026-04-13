@@ -53,8 +53,8 @@ export function useTimeline(): TimelineState {
   const visibleSteps = DEMO_STEPS.filter((step) => step.time <= elapsed);
 
   // Video is hidden (videoTime = -1) until VIDEO_PHASE_START, and during reset.
-  // Once active, it plays continuously with VIDEO_OFFSET to skip the mirror
-  // init idle period so the video starts right when capabilities fire.
+  // Once active, it plays continuously with VIDEO_OFFSET to skip the recording
+  // startup idle period so the video starts right when capabilities fire.
   const currentVideoTime =
     elapsed >= VIDEO_PHASE_START && !isResetting
       ? elapsed - VIDEO_PHASE_START + VIDEO_OFFSET

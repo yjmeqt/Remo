@@ -1,6 +1,6 @@
 # Remo Skills
 
-AI agent skills that give coding agents eyes and hands for iOS development.
+AI agent skills for capability-driven iOS development with Remo.
 
 ## Skills
 
@@ -8,7 +8,7 @@ AI agent skills that give coding agents eyes and hands for iOS development.
 |-------|------|---------|-------------|
 | [`remo-setup`](remo-setup/SKILL.md) | Rigid, one-time | Integrate Remo SDK | First time adding Remo to a project |
 | [`remo-capabilities`](remo-capabilities/SKILL.md) | Rigid, periodic | Map features → register capabilities → document | After setup, or when features change |
-| [`remo`](remo/SKILL.md) | Flexible, ongoing | Verified development workflow with timeline reports | Every task — verify, debug, test, explore |
+| [`remo`](remo/SKILL.md) | Flexible, ongoing | Capability-driven development workflow with timeline reports | Every task — drive app state, verify, debug, test, explore |
 | [`remo-design-review`](remo-design-review/SKILL.md) | Rigid, periodic | Compare app against Figma designs | Before release, after UI changes, design QA |
 
 ## How They Fit Together
@@ -18,9 +18,9 @@ remo-setup              One-time: add SDK, wire Remo.start(), verify connection
     ↓
 remo-capabilities       Periodic: explore app → register capabilities → write capabilities.md
     ↓
-remo                    Ongoing: baseline → [code → build → checkpoint] → report
+remo                    Ongoing: baseline → [code → build → invoke/checkpoint] → report
     ↓
-remo-design-review      Periodic: Figma → state setup → screenshot → compare → compliance report
+remo-design-review      Periodic: Figma → state setup → compare captures → compliance report
     ↑                            ↑
     └── feeds back ──────────────┘  (missing capabilities → TODO → implement → re-review)
 ```
