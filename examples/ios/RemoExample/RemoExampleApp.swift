@@ -9,11 +9,6 @@ struct RemoExampleApp: App {
         WindowGroup {
             ContentView()
                 .environment(store)
-                .onAppear {
-                    #if DEBUG
-                    setupRemo(store: store)
-                    #endif
-                }
         }
     }
 }

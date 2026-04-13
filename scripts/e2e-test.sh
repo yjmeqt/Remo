@@ -68,6 +68,8 @@ cleanup() {
         echo "Terminating app..."
         xcrun simctl terminate "$DEVICE_UUID" com.remo.example 2>/dev/null || true
     fi
+    # Kill any remaining remo processes to avoid orphan warnings in CI
+    pkill -x remo 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -130,6 +132,16 @@ maybe_screenshot() {
     fi
 }
 
+find_built_app() {
+    find ~/Library/Developer/Xcode/DerivedData \
+        -path "*/Debug-iphonesimulator/RemoExample.app" \
+        -maxdepth 5 \
+        -type d \
+        -print0 2>/dev/null \
+        | xargs -0 ls -td 2>/dev/null \
+        | head -1
+}
+
 # ---------------------------------------------------------------------------
 # Phase 0: Build
 # ---------------------------------------------------------------------------
@@ -161,7 +173,7 @@ else
         exit 1
     fi
 
-    REMO_LOCAL=1 xcodebuild build \
+    REMO_LOCAL=1 xcodebuild clean build \
         -workspace "$ROOT/examples/ios/RemoExample.xcworkspace" \
         -scheme RemoExample \
         -destination "platform=iOS Simulator,id=$DEVICE_UUID" \
@@ -170,7 +182,7 @@ else
         2>&1 | tail -5
 
     # Find the built app bundle
-    APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "RemoExample.app" -path "*/Debug-iphonesimulator/*" -maxdepth 5 2>/dev/null | head -1)
+    APP_PATH=$(find_built_app)
     if [ -z "$APP_PATH" ]; then
         echo -e "${RED}ERROR:${RESET} Could not find built RemoExample.app in DerivedData"
         exit 1
@@ -191,7 +203,7 @@ echo "  Device: $DEVICE_NAME ($DEVICE_UUID)"
 
 # Find app path if not set during build phase
 if [ -z "${APP_PATH:-}" ]; then
-    APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "RemoExample.app" -path "*/Debug-iphonesimulator/*" -maxdepth 5 2>/dev/null | head -1)
+    APP_PATH=$(find_built_app)
     if [ -z "$APP_PATH" ]; then
         echo -e "${RED}ERROR:${RESET} RemoExample.app not found. Run without SKIP_BUILD first."
         exit 1
@@ -286,6 +298,7 @@ fi
 # Phase 3: Setup Artifacts
 # ---------------------------------------------------------------------------
 
+rm -rf "$ARTIFACTS_DIR"
 mkdir -p "$ARTIFACTS_DIR"
 
 if [ "$OPT_RECORD" = true ]; then
@@ -311,47 +324,74 @@ assert_call "app_info" "__app_info" '{}' '.data.bundle_id == "com.remo.example"'
 
 maybe_screenshot "01-home-initial"
 
-# -- Counter --
-echo ""
-echo -e "${BOLD}[Counter]${RESET}"
-assert_call "counter.increment" "counter.increment" '{"amount":5}' '.data.amount == 5'
-sleep 0.3
-maybe_screenshot "02-counter-incremented"
-
 # -- UI Effects --
 echo ""
 echo -e "${BOLD}[UI Effects]${RESET}"
 assert_call "ui.toast" "ui.toast" '{"message":"E2E test toast"}' '.data.status == "ok"'
 sleep 1
-maybe_screenshot "03-toast"
+maybe_screenshot "02-toast"
+sleep 2  # wait for toast to dismiss (auto-hides after 3s)
 
 assert_call "ui.confetti" "ui.confetti" '{}' '.data.status == "ok"'
 sleep 0.5
-maybe_screenshot "04-confetti"
+maybe_screenshot "03-confetti"
 
 assert_call "ui.setAccentColor" "ui.setAccentColor" '{"color":"purple"}' '.data.color == "purple"'
 sleep 0.3
-maybe_screenshot "05-accent-purple"
+maybe_screenshot "04-accent-purple"
 
-# -- Navigation & Items --
+# -- Navigation --
 echo ""
-echo -e "${BOLD}[Navigation & Items]${RESET}"
-assert_call "navigate" "navigate" '{"route":"items"}' '.data.status == "ok"'
+echo -e "${BOLD}[Navigation]${RESET}"
+assert_call "navigate" "navigate" '{"route":"uikit"}' '.data.status == "ok"'
 sleep 1
+maybe_screenshot "05-uikit-grid"
 
-maybe_screenshot "06-items-default"
-
-assert_call "items.add" "items.add" '{"name":"Item X"}' '.data.status == "ok"'
+# -- Grid: tab select --
+echo ""
+echo -e "${BOLD}[Grid]${RESET}"
+assert_call "grid.tab.select (by id)" "grid.tab.select" '{"id":"feed"}' '.data.status == "ok" and .data.selectedTab.id == "feed"'
 sleep 0.3
-maybe_screenshot "07-items-added"
-
-assert_call "items.remove" "items.remove" '{"name":"Item X"}' '.data.status == "ok"'
+assert_call "grid.tab.select (by index)" "grid.tab.select" '{"index":1}' '.data.status == "ok" and .data.selectedTab.id == "items"'
 sleep 0.3
-maybe_screenshot "08-items-removed"
+remo_call "grid.tab.select" '{"index":0}' >/dev/null; sleep 0.3
 
-assert_call "items.clear" "items.clear" '{}' '.data.status == "ok"'
+assert_call "grid.feed.append" "grid.feed.append" '{"title":"E2E Card","subtitle":"automated"}' '.data.status == "ok" and .data.tab == "feed"'
 sleep 0.3
-maybe_screenshot "09-items-cleared"
+maybe_screenshot "06-feed-appended"
+
+# Scroll tests on items tab — 20 items guarantees visible scroll range
+remo_call "grid.tab.select" '{"id":"items"}' >/dev/null; sleep 0.3
+assert_call "grid.scroll.vertical (bottom)" "grid.scroll.vertical" '{"position":"bottom"}' '.data.status == "ok" and .data.position == "bottom" and .data.tab == "items"'
+sleep 0.5
+maybe_screenshot "07-scrolled-bottom"
+
+assert_call "grid.scroll.vertical (top)" "grid.scroll.vertical" '{"position":"top"}' '.data.status == "ok" and .data.position == "top" and .data.tab == "items"'
+sleep 0.3
+remo_call "grid.tab.select" '{"id":"feed"}' >/dev/null; sleep 0.3
+
+assert_call "grid.feed.reset" "grid.feed.reset" '{}' '.data.status == "ok" and .data.tab == "feed"'
+sleep 0.3
+maybe_screenshot "08-feed-reset"
+
+assert_call "grid.scroll.horizontal (next)" "grid.scroll.horizontal" '{"direction":"next"}' '.data.status == "ok" and .data.selectedTab.id == "items"'
+sleep 0.3
+assert_call "grid.scroll.horizontal (previous)" "grid.scroll.horizontal" '{"direction":"previous"}' '.data.status == "ok" and .data.selectedTab.id == "feed"'
+sleep 0.3
+
+assert_call "grid.visible" "grid.visible" '{}' '.data.status == "ok" and .data.tab == "feed"'
+sleep 0.3
+maybe_screenshot "09-visible"
+
+# -- Capability cleanup --
+echo ""
+echo -e "${BOLD}[Capabilities]${RESET}"
+CAPABILITIES_OUTPUT=$(remo list -a "$ADDR" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' || true)
+if echo "$CAPABILITIES_OUTPUT" | grep -Eq 'items\.(add|remove|clear)'; then
+    fail "legacy items.* capabilities are not exposed"
+else
+    pass "legacy items.* capabilities are not exposed"
+fi
 
 # -- State round-trip --
 echo ""

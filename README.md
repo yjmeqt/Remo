@@ -17,9 +17,9 @@ Or watch the raw demo video: [remo_demo.mov](https://github.com/yjmeqt/Remo/rele
 ```
 # Agent writes code, triggers a build, then verifies via Remo:
 
-remo devices                                            # discover real devices (USB) & simulators
-remo call -a <addr> counter.increment '{"amount":5}'    # invoke a capability
-remo screenshot -a <addr> -o after.jpg                  # capture the result
+remo devices                                                          # discover real devices (USB) & simulators
+remo call -a <addr> grid.feed.append '{"title":"Ship It"}'            # invoke a capability
+remo screenshot -a <addr> -o after.jpg                                # capture the result
 remo mirror -a <addr> --save recording.mp4              # or record video for animation review
 # → Agent compares before/after screenshots to confirm the UI is correct
 ```
@@ -60,23 +60,62 @@ pod 'Remo/ObjC', :podspec => 'https://raw.githubusercontent.com/yjmeqt/remo-spm/
 
 ### 2. Register capabilities
 
-**Swift**
+**Swift — typed `#Remo` + `#remoCap` + `#remoScope` macros (recommended)**
+
+Remo macros strip all Remo code from release builds automatically. No `#if DEBUG` wrappers needed.
 
 ```swift
-#if DEBUG
 import RemoSwift
 
-// The server starts automatically on first API access.
-// Simulator: random port (avoids collisions). Device: port 9930 (for USB tunnel).
-Remo.register("myFeature.toggle") { params in
-    let enabled = params["enabled"] as? Bool ?? false
-    FeatureFlags.shared.myFeature = enabled
-    return ["toggled": enabled]
+// SwiftUI — declare and register inside the same debug island
+.task {
+    await #Remo {
+        struct ToggleResponse: Encodable {
+            let toggled: Bool
+        }
+
+        enum MyFeatureToggle: RemoCapability {
+            static let name = "myFeature.toggle"
+
+            struct Request: Decodable {
+                let enabled: Bool?
+            }
+
+            typealias Response = ToggleResponse
+        }
+
+        await #remoScope {
+            #remoCap(MyFeatureToggle.self) { req in
+                let enabled = req.enabled ?? false
+                Task { @MainActor in
+                    FeatureFlags.shared.myFeature = enabled
+                }
+                return ToggleResponse(toggled: enabled)
+            }
+        }
+    }
 }
 
-// Unregister when no longer needed (e.g., in .onDisappear):
-Remo.unregister("myFeature.toggle")
-#endif
+// UIKit — local capability type plus view-controller scoped lifecycle
+override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    #Remo {
+        struct GridVisibleResponse: Encodable {
+            let items: [String]
+        }
+
+        enum GridVisible: RemoCapability {
+            static let name = "grid.visible"
+            typealias Response = GridVisibleResponse
+        }
+
+        #remoScope(scopedTo: self) {
+            #remoCap(GridVisible.self) { [weak self] _ in
+                return GridVisibleResponse(items: self?.visibleItems() ?? [])
+            }
+        }
+    }
+}
 ```
 
 **Objective-C**
@@ -86,10 +125,13 @@ Remo.unregister("myFeature.toggle")
 #import <RemoObjC/RMRemo.h>
 
 // The server starts automatically on first API access.
+// Objective-C handlers run on Remo's background callback path.
 [RMRemo registerCapability:@"myFeature.toggle"
                    handler:^NSDictionary *(NSDictionary *params) {
     BOOL enabled = [params[@"enabled"] boolValue];
-    [FeatureFlags shared].myFeature = enabled;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [FeatureFlags shared].myFeature = enabled;
+    });
     return @{@"toggled": @(enabled)};
 }];
 
@@ -98,32 +140,9 @@ Remo.unregister("myFeature.toggle")
 #endif
 ```
 
-Capabilities can be unregistered dynamically — useful for page-level or conditional capabilities:
+Remo handlers execute on a background callback path and must remain `@Sendable`. Do not assume main-thread or `MainActor` execution inside the callback — explicitly hand off UI mutations to the main thread.
 
-**Swift**
-
-```swift
-#if DEBUG
-// Register when entering a screen
-Remo.register("detail.getInfo") { _ in ["item": itemName] }
-
-// Unregister when leaving
-Remo.unregister("detail.getInfo")
-#endif
-```
-
-**Objective-C**
-
-```objc
-#if DEBUG
-// Register
-[RMRemo registerCapability:@"detail.getInfo" handler:^NSDictionary *(NSDictionary *params) {
-    return @{@"item": self.itemName};
-}];
-
-// Unregister
-[RMRemo unregisterCapability:@"detail.getInfo"];
-#endif
+The iOS example app includes a dedicated Grid tab that demonstrates UIKit integration with `grid.*` capabilities wired through `scopedTo:` lifecycle management.
 ```
 
 ### 3. Install the CLI

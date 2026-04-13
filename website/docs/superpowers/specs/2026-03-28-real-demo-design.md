@@ -26,22 +26,23 @@ The demo exercises a visually-compelling subset of the full e2e test:
 |---|-----------|-----------|---------------|
 | 1 | `remo devices` | "Let me discover the device..." | — |
 | 2 | `remo capabilities` | "Listing registered capabilities..." | — |
-| 3 | `counter.increment` x3 | "Testing the counter..." | Number goes 0 -> 1 -> 2 -> 3 |
-| 4 | `ui.toast` | "Triggering a toast notification..." | Toast overlay appears |
-| 5 | `ui.setAccentColor` | "Changing the accent color..." | App recolors |
-| 6 | `ui.confetti` | "Testing confetti effect..." | Particles fly |
-| 7 | `navigate("items")` | "Navigating to the items page..." | Tab switches |
-| 8 | `items.add` x2 | "Adding items to verify list..." | List grows |
-| 9 | `remo screenshot` | "Capturing a screenshot to confirm..." | — |
-| 10 | Summary | "All features verified successfully." | — |
+| 3 | `ui.toast` | "Triggering a toast notification..." | Toast overlay appears |
+| 4 | `ui.setAccentColor` | "Changing the accent color..." | App recolors |
+| 5 | `ui.confetti` | "Testing confetti effect..." | Particles fly |
+| 6 | `navigate("uikit")` | "Navigating to the Grid tab..." | Tab switches |
+| 7 | `grid.tab.select` | "Selecting the Items tab..." | Tab strip updates |
+| 8 | `grid.scroll.vertical` | "Scrolling to the bottom..." | List scrolls to end |
+| 9 | `grid.tab.select` | "Switching back to Feed..." | Tab strip updates |
+| 10 | `grid.feed.append` | "Appending a card to the feed..." | New card appears |
+| 11 | `remo screenshot` | "Capturing a screenshot to confirm..." | — |
+| 12 | Summary | "All features verified successfully." | — |
 
 Total loop duration: ~45 seconds.
 
 Capabilities deliberately excluded:
 - `__ping`, `__device_info`, `__app_info` — internal/boring
 - `state.get`, `state.set` — not visual
-- `items.remove`, `items.clear` — similar to add, redundant
-- `counter.decrement`, `counter.get_count` — counter.increment alone is enough
+- `grid.feed.reset`, `grid.scroll.horizontal`, `grid.visible` — similar to included grid caps, redundant for demo
 
 ## Recording Script
 
@@ -70,12 +71,13 @@ The script assumes the app is already built and running (use `SKIP_BUILD=1` from
 
 Each capability gets a deliberate sleep after invocation to let the UI animation complete:
 
-- `counter.increment`: 0.5s between each
 - `ui.toast`: 1.5s (toast display time)
 - `ui.setAccentColor`: 0.8s (color transition)
 - `ui.confetti`: 2.0s (particle animation)
 - `navigate`: 1.0s (tab switch animation)
-- `items.add`: 0.5s between each
+- `grid.tab.select`: 0.5s (tab strip animation)
+- `grid.scroll.vertical`: 0.5s (scroll animation)
+- `grid.feed.append`: 0.5s (cell insertion animation)
 - `remo screenshot`: 0.5s
 
 ## Website Changes
@@ -94,9 +96,9 @@ The code phase (first ~5-8s) uses `videoTime: 0` (app idle) with terminal-only n
 ```
 0.0s  $ claude "verify the RemoExample app works correctly"
 2.0s  Claude: "Let me explore the project structure..."
-3.5s  > Read examples/ios/.../ContentView.swift
-5.0s  Claude: "I see counter, items, and UI effect features. I'll register capabilities to verify each one."
-6.5s  > Edit ContentView.swift — added Remo.register("counter.increment", ...)
+3.5s  > Read examples/ios/.../UIKitDemoViewController.swift
+5.0s  Claude: "I see UI effects and a Grid tab with feed and items. I'll register capabilities to verify each one."
+6.5s  > Edit UIKitDemoViewController.swift — added Remo.register("grid.*", ...)
 7.5s  Claude: "Capabilities registered. Now let me verify the app."
 ```
 

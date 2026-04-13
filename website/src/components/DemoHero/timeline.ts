@@ -65,14 +65,14 @@ export const DEMO_STEPS: DemoStep[] = [
     time: 5,
     terminal: {
       type: "claude",
-      text: "I see counter, items, and UI effect features. I'll register capabilities to verify each one.",
+      text: "I see UI effects and a Grid tab with feed and items. I'll register capabilities to verify each one.",
     },
   },
   {
     time: 6.5,
     terminal: {
       type: "command",
-      text: '❯ Edit ContentView.swift — added Remo.register("counter.increment", ...)',
+      text: '❯ Edit UIKitDemoViewController.swift — added Remo.register("grid.*", ...)',
     },
   },
   {
@@ -95,76 +95,24 @@ export const DEMO_STEPS: DemoStep[] = [
   // (skipping the idle mirror-init period).
   //
   // Recording timestamps (2026-03-28):
-  //   counter.increment: 0.02, 1.07, 2.12
-  //   screenshot 01:     3.23
-  //   ui.toast:          3.78
-  //   screenshot 02:     6.39
-  //   ui.setAccentColor: 6.93
-  //   screenshot 03:     8.53
-  //   ui.confetti:       9.08
-  //   screenshot 04:     12.17
-  //   navigate:          12.72
-  //   screenshot 05:     14.36
-  //   items.add #1:      14.92
-  //   items.add #2:      15.98
-  //   screenshot 06:     17.04
+  //   ui.toast:               0.02
+  //   screenshot 01:          2.63
+  //   ui.setAccentColor:      3.18
+  //   screenshot 02:          4.78
+  //   ui.confetti:            5.33
+  //   screenshot 03:          8.42
+  //   navigate (uikit):       8.97
+  //   screenshot 04:          10.61
+  //   grid.tab.select items:  11.16
+  //   grid.scroll.vertical:   12.22
+  //   screenshot 05:          13.28
+  //   grid.tab.select feed:   13.83
+  //   grid.feed.append:       14.89
+  //   screenshot 06:          15.95
 
-  // -- Counter (recording: 0.02, 1.07, 2.12) --
+  // -- Toast (recording: 0.02, screenshot at 2.63) --
   {
     time: V + 0.02,
-    terminal: {
-      type: "command",
-      text: "❯ remo call counter.increment '{\"amount\":1}'",
-    },
-  },
-  {
-    time: V + 0.5,
-    terminal: { type: "result", text: '✓ { "amount": 1 }' },
-  },
-  {
-    time: V + 1.07,
-    terminal: {
-      type: "command",
-      text: "❯ remo call counter.increment '{\"amount\":1}'",
-    },
-  },
-  {
-    time: V + 1.5,
-    terminal: { type: "result", text: '✓ { "amount": 2 }' },
-  },
-  {
-    time: V + 2.12,
-    terminal: {
-      type: "command",
-      text: "❯ remo call counter.increment '{\"amount\":1}'",
-    },
-  },
-  {
-    time: V + 2.6,
-    terminal: { type: "result", text: '✓ { "amount": 3 }' },
-  },
-  {
-    time: V + 3.23,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-  },
-  {
-    time: V + 3.5,
-    terminal: {
-      type: "result",
-      text: "✓ captured 1170×2532 → counter.png",
-    },
-  },
-  {
-    time: V + 3.6,
-    terminal: {
-      type: "claude",
-      text: "Counter works. Testing UI effects...",
-    },
-  },
-
-  // -- Toast (recording: 3.78, screenshot at 6.39) --
-  {
-    time: V + 3.78,
     terminal: {
       type: "command",
       text: '❯ remo call ui.toast \'{"message":"Features verified ✓"}\'',
@@ -210,102 +158,123 @@ export const DEMO_STEPS: DemoStep[] = [
     },
   },
 
-  // -- Confetti (recording: 9.08, screenshot at 12.17) --
+  // -- Confetti (recording: 5.33, screenshot at 8.42) --
   {
-    time: V + 9.08,
+    time: V + 5.33,
     terminal: { type: "command", text: "❯ remo call ui.confetti '{}'" },
   },
   {
-    time: V + 9.5,
+    time: V + 5.75,
     terminal: { type: "result", text: '✓ { "status": "ok" }' },
   },
   {
-    time: V + 12.17,
+    time: V + 8.42,
     terminal: { type: "command", text: "❯ remo screenshot" },
   },
   {
-    time: V + 12.4,
-    terminal: {
-      type: "result",
-      text: "✓ captured → confetti.png",
-    },
+    time: V + 8.6,
+    terminal: { type: "result", text: "✓ captured → confetti.png" },
   },
   {
-    time: V + 12.5,
+    time: V + 8.7,
     terminal: {
       type: "claude",
-      text: "UI effects working. Checking the items page...",
+      text: "UI effects working. Checking the Grid tab...",
     },
   },
 
-  // -- Navigation (recording: 12.72, screenshot at 14.36) --
+  // -- Navigate to Grid (recording: 8.97, screenshot at 10.61) --
   {
-    time: V + 12.72,
+    time: V + 8.97,
     terminal: {
       type: "command",
-      text: '❯ remo call navigate \'{"route":"items"}\'',
+      text: '❯ remo call navigate \'{"route":"uikit"}\'',
     },
   },
   {
-    time: V + 13.2,
+    time: V + 9.45,
     terminal: { type: "result", text: '✓ { "status": "ok" }' },
   },
   {
-    time: V + 14.36,
+    time: V + 10.61,
     terminal: { type: "command", text: "❯ remo screenshot" },
   },
   {
-    time: V + 14.6,
-    terminal: {
-      type: "result",
-      text: "✓ captured → items-page.png",
-    },
+    time: V + 10.8,
+    terminal: { type: "result", text: "✓ captured → grid.png" },
   },
 
-  // -- Items (recording: 14.92, 15.98, screenshot at 17.04) --
+  // -- Grid capabilities (recording: 11.16 – 15.95) --
   {
-    time: V + 14.92,
+    time: V + 11.16,
     terminal: {
       type: "command",
-      text: '❯ remo call items.add \'{"name":"Test Item 1"}\'',
+      text: '❯ remo call grid.tab.select \'{"id":"items"}\'',
     },
   },
   {
-    time: V + 15.4,
-    terminal: { type: "result", text: '✓ { "status": "ok" }' },
+    time: V + 11.6,
+    terminal: { type: "result", text: '✓ { "selectedTab": { "id": "items" } }' },
   },
   {
-    time: V + 15.98,
+    time: V + 12.22,
     terminal: {
       type: "command",
-      text: '❯ remo call items.add \'{"name":"Test Item 2"}\'',
+      text: '❯ remo call grid.scroll.vertical \'{"position":"bottom"}\'',
     },
   },
   {
-    time: V + 16.4,
-    terminal: { type: "result", text: '✓ { "status": "ok" }' },
+    time: V + 12.65,
+    terminal: { type: "result", text: '✓ { "position": "bottom", "tab": "items" }' },
   },
   {
-    time: V + 17.04,
+    time: V + 13.28,
     terminal: { type: "command", text: "❯ remo screenshot" },
   },
   {
-    time: V + 17.3,
+    time: V + 13.45,
+    terminal: { type: "result", text: "✓ captured → scrolled.png" },
+  },
+  {
+    time: V + 13.83,
     terminal: {
-      type: "result",
-      text: "✓ captured → items-added.png",
+      type: "command",
+      text: '❯ remo call grid.tab.select \'{"id":"feed"}\'',
     },
+  },
+  {
+    time: V + 14.25,
+    terminal: { type: "result", text: '✓ { "selectedTab": { "id": "feed" } }' },
+  },
+  {
+    time: V + 14.89,
+    terminal: {
+      type: "command",
+      text: '❯ remo call grid.feed.append \'{"title":"Ship It","subtitle":"Live from Remo"}\'',
+    },
+  },
+  {
+    time: V + 15.3,
+    terminal: { type: "result", text: '✓ { "status": "ok", "tab": "feed" }' },
+  },
+  {
+    time: V + 15.95,
+    terminal: { type: "command", text: "❯ remo screenshot" },
+  },
+  {
+    time: V + 16.15,
+    terminal: { type: "result", text: "✓ captured → feed-appended.png" },
   },
 
   // -- Summary --
   {
-    time: V + 18,
+    time: V + 17,
     terminal: {
       type: "claude",
-      text: "All features verified successfully. Counter, UI effects, navigation, and items all working correctly.",
+      text: "All features verified successfully. UI effects and Grid capabilities all working correctly.",
     },
   },
 ];
 
-// Last step at V+18 = 28s, plus 3s viewing buffer + 2s reset fade
-export const DEMO_TOTAL_DURATION = 33;
+// Last step at V+17 = 27s, plus 3s viewing buffer + 2s reset fade
+export const DEMO_TOTAL_DURATION = 32;
