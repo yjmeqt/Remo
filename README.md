@@ -4,32 +4,33 @@
 
 [![Remo demo preview](docs/assets/remo_preview.png)](https://github.com/yjmeqt/Remo/releases/download/v0.3.0-demo/remo_demo.mov)
 
-AI agents can already write Swift and trigger builds, but they're still blind on iOS. Remo gives them the **eyes** and **hands** they need to discover real devices (USB) and simulators, invoke app capabilities, then **verify the result visually** through screenshots, live mirroring, or recorded video.
+AI agents can already write Swift and trigger builds, but they still need a clean way to drive app-specific behavior at runtime. Remo gives them a programmable interface inside the app: discover devices, list capabilities, invoke named handlers, and move the app into the exact state they need.
 
-The result is a closed loop: **write code → build → call capabilities → inspect the UI → decide if the change is correct → iterate.** No human watching the simulator.
+The result is a tighter loop: **write code → build → call capabilities → inspect the app with your preferred tooling → iterate.** Remo focuses on semantic app control, not rebuilding the entire simulator toolchain.
 
 ## Demo
 
-**[Interactive showcase →](https://yjmeqt.github.io/Remo/)** Watch Claude Code autonomously verify an iOS app through Remo.
+**[Interactive showcase →](https://yjmeqt.github.io/Remo/)** Watch Claude Code register and invoke app-defined capabilities through Remo.
 
 Or watch the raw demo video: [remo_demo.mov](https://github.com/yjmeqt/Remo/releases/download/v0.3.0-demo/remo_demo.mov)
 
 ```
-# Agent writes code, triggers a build, then verifies via Remo:
+# Agent writes code, triggers a build, then drives the app via Remo:
 
 remo devices                                                          # discover real devices (USB) & simulators
+remo list -a <addr>                                                   # inspect available capabilities
 remo call -a <addr> grid.feed.append '{"title":"Ship It"}'            # invoke a capability
-remo screenshot -a <addr> -o after.jpg                                # capture the result
-remo mirror -a <addr> --save recording.mp4              # or record video for animation review
-# → Agent compares before/after screenshots to confirm the UI is correct
+remo call -a <addr> grid.tab.select '{"id":"feed"}'                   # move the app into the next state
 ```
+
+For simulator automation, screenshots, recording, and broader inspection, pair Remo with `xcodebuildmcp`. Remo focuses on the part that tooling outside the app cannot provide: app-defined capability registration and semantic runtime control.
 
 ## Why Remo?
 
-- **Agent-first.** Every API is designed for programmatic access. Agents discover real devices (USB) and simulators, invoke capabilities, and verify results — enabling fully autonomous write → test → fix cycles for iOS.
-- **Extensible capabilities.** Developers register named handlers in Swift. Agents discover and call them at runtime — read CoreData, toggle feature flags, navigate routes, inject test data. If you can write it in Swift, an agent can call it.
-- **Visual verification.** Screenshots and captured video let agents **see what the user sees** after every action. Screenshots for static UI checks; video recording for reviewing animations and transitions.
-- **Instant feedback.** Capability call → UI update → screenshot capture in milliseconds, over USB or localhost.
+- **Capability-first.** Developers register named handlers in Swift. Agents discover and call them at runtime — read CoreData, toggle feature flags, navigate routes, inject test data. If you can write it in Swift, an agent can call it.
+- **Semantic control.** Remo operates in the language of your app, not generic taps and pixels. Capabilities take structured input and return structured output.
+- **Runtime discovery.** Agents find real devices over USB and simulators over Bonjour, then connect without hand-written per-device setup.
+- **Composes with `xcodebuildmcp`.** Use `xcodebuildmcp` for simulator automation, screenshots, recording, and broader inspection. Use Remo for in-app semantics and capability registration.
 - **Debug-only by default.** The SDK compiles to no-ops in Release builds (`#if DEBUG`), so it never ships to production.
 
 ## Quick Start
@@ -143,7 +144,6 @@ override func viewDidAppear(_ animated: Bool) {
 Remo handlers execute on a background callback path and must remain `@Sendable`. Do not assume main-thread or `MainActor` execution inside the callback — explicitly hand off UI mutations to the main thread.
 
 The iOS example app includes a dedicated Grid tab that demonstrates UIKit integration with `grid.*` capabilities wired through `scopedTo:` lifecycle management.
-```
 
 ### 3. Install the CLI
 
@@ -171,16 +171,16 @@ bash uninstall-remo.sh
 
 Manual release downloads are also available on the GitHub Releases page if you prefer to place `remo` on your `PATH` yourself.
 
-### 4. Discover and interact
+### 4. Discover and invoke
 
 ```bash
 remo devices                                            # discover real devices & simulators
+remo list -a <addr>                                     # inspect registered capabilities
 remo call -a <addr> myFeature.toggle '{"enabled":true}' # invoke your capability
-remo screenshot -a <addr> -o screen.jpg                 # verify the result
-remo mirror -a <addr> --web                             # inspect animations in the browser
-# or:
 remo dashboard                                          # open the multi-device web dashboard
 ```
+
+For simulator automation, screenshots, recording, and broader inspection, use `xcodebuildmcp` alongside Remo.
 
 ## How It Works
 
@@ -199,7 +199,7 @@ remo dashboard                                          # open the multi-device 
 │  ├── TCP server (tokio)              │
 │  ├── Capability registry             │
 │  ├── Bonjour advertisement           │
-│  ├── Built-in: view tree, screenshot │
+│  ├── Built-in: view tree, app info   │
 │  └── ObjC bridge (objc2)             │
 │  ── FFI boundary ──                  │
 │  RemoSwift (Swift wrapper)           │
@@ -207,7 +207,7 @@ remo dashboard                                          # open the multi-device 
 └──────────────────────────────────────┘
 ```
 
-The iOS SDK starts a TCP server inside your app. Real devices are discovered via USB (usbmuxd), simulators via Bonjour/mDNS. The macOS CLI (or any AI agent) sends JSON-RPC requests to invoke capabilities.
+The iOS SDK starts a TCP server inside your app. Real devices are discovered via USB (usbmuxd), simulators via Bonjour/mDNS. The macOS CLI (or any AI agent) sends JSON-RPC requests to discover and invoke capabilities. Pair it with `xcodebuildmcp` when you need simulator automation or inspection outside the app boundary.
 
 ## CLI Commands
 
@@ -249,13 +249,13 @@ These are registered automatically by the SDK — no setup required:
 
 ## Claude Code Skills
 
-Remo ships a set of [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/skills) that give AI agents structured workflows for iOS development. Install them into any iOS project to get a closed-loop: setup → capabilities → verified development → design review.
+Remo ships a set of [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/skills) that give AI agents structured workflows for capability-driven iOS development. Install them into any iOS project to get a loop of setup → capabilities → runtime control → design review.
 
 | Skill | Type | Purpose |
 |-------|------|---------|
 | [`remo-setup`](skills/remo-setup/SKILL.md) | One-time | Install CLI, integrate SDK, verify connection |
 | [`remo-capabilities`](skills/remo-capabilities/SKILL.md) | Periodic | Map app features → register capabilities → document |
-| [`remo`](skills/remo/SKILL.md) | Ongoing | Verified development with screenshot evidence and timeline reports |
+| [`remo`](skills/remo/SKILL.md) | Ongoing | Capability-driven development with checkpoints and timeline reports |
 | [`remo-design-review`](skills/remo-design-review/SKILL.md) | Periodic | Compare running app against Figma designs |
 
 ### Install skills into your iOS project
@@ -304,7 +304,7 @@ cargo build -p remo-cli              # Build the CLI
 | `remo-usbmuxd` | macOS usbmuxd client — device discovery + USB tunneling |
 | `remo-bonjour` | Bonjour/mDNS service registration and discovery |
 | `remo-sdk` | iOS embedded server + capability registry + C FFI |
-| `remo-objc` | ObjC runtime bridge via `objc2` (view tree, screenshot, device info) |
+| `remo-objc` | ObjC runtime bridge via `objc2` (view tree, device/app info, media hooks) |
 | `remo-desktop` | macOS library — device manager, RPC client, web dashboard, fMP4 muxer |
 | `remo-daemon` | Background daemon — connection pool, HTTP/WebSocket API, event bus |
 | `remo-cli` | CLI entry point |

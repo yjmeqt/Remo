@@ -16,11 +16,11 @@ export interface DemoStep {
 // Two phases:
 //   1. Code phase (0 – VIDEO_PHASE_START): terminal-only, agent explores code
 //      and registers capabilities. iPhone is blank (videoTime = -1).
-//   2. Verify phase (VIDEO_PHASE_START onwards): video plays continuously
+//   2. Live app phase (VIDEO_PHASE_START onwards): video plays continuously
 //      while terminal commands appear synced to the recording.
 //
 // The video advances as: videoTime = (elapsed - VIDEO_PHASE_START) + VIDEO_OFFSET
-// VIDEO_OFFSET skips the mirror-init idle period so the video starts right
+// VIDEO_OFFSET skips the recording startup idle period so the video starts right
 // when capabilities fire. Terminal step times = VIDEO_PHASE_START + elapsed_s
 // where elapsed_s comes from demo-timestamps.json.
 // =============================================================================
@@ -28,11 +28,11 @@ export interface DemoStep {
 /** Terminal time (seconds) when the video appears and starts playing */
 export const VIDEO_PHASE_START = 10;
 
-/** Seconds into the video where capabilities start (simctl recording delay) */
+/** Seconds into the video where capabilities start (recording startup delay) */
 export const VIDEO_OFFSET = 1;
 
 /**
- * Shorthand for verify-phase step times.
+ * Shorthand for live-app phase step times.
  * V + recording_elapsed_s = terminal time when that step appears,
  * and the video will be at VIDEO_OFFSET + recording_elapsed_s.
  */
@@ -44,7 +44,7 @@ export const DEMO_STEPS: DemoStep[] = [
     time: 0,
     terminal: {
       type: "prompt",
-      text: '$ claude "verify the RemoExample app works correctly"',
+      text: '$ claude "drive the RemoExample app through Remo capabilities"',
     },
   },
   {
@@ -65,7 +65,7 @@ export const DEMO_STEPS: DemoStep[] = [
     time: 5,
     terminal: {
       type: "claude",
-      text: "I see UI effects and a Grid tab with feed and items. I'll register capabilities to verify each one.",
+      text: "I see UI effects and a Grid tab with feed and items. I'll register capabilities for each one.",
     },
   },
   {
@@ -86,31 +86,31 @@ export const DEMO_STEPS: DemoStep[] = [
     time: 8.5,
     terminal: {
       type: "claude",
-      text: "Capabilities registered. Now let me verify the app.",
+      text: "Capabilities registered. Now I'll drive the app.",
     },
   },
 
-  // === VERIFY PHASE (terminal + continuous video) ===
+  // === LIVE APP PHASE (terminal + continuous video) ===
   // iPhone appears at VIDEO_PHASE_START. Video starts at VIDEO_OFFSET
-  // (skipping the idle mirror-init period).
+  // (skipping the idle recording startup period).
   //
   // Recording timestamps (2026-03-28):
   //   ui.toast:               0.02
-  //   screenshot 01:          2.63
+  //   observation 01:         2.63
   //   ui.setAccentColor:      3.18
-  //   screenshot 02:          4.78
+  //   observation 02:         4.78
   //   ui.confetti:            5.33
-  //   screenshot 03:          8.42
+  //   observation 03:         8.42
   //   navigate (uikit):       8.97
-  //   screenshot 04:          10.61
+  //   observation 04:         10.61
   //   grid.tab.select items:  11.16
   //   grid.scroll.vertical:   12.22
-  //   screenshot 05:          13.28
+  //   observation 05:         13.28
   //   grid.tab.select feed:   13.83
   //   grid.feed.append:       14.89
-  //   screenshot 06:          15.95
+  //   observation 06:         15.95
 
-  // -- Toast (recording: 0.02, screenshot at 2.63) --
+  // -- Toast (recording: 0.02, observation at 2.63) --
   {
     time: V + 0.02,
     terminal: {
@@ -124,17 +124,13 @@ export const DEMO_STEPS: DemoStep[] = [
   },
   {
     time: V + 6.39,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-  },
-  {
-    time: V + 6.6,
     terminal: {
-      type: "result",
-      text: "✓ captured → toast.png",
+      type: "claude",
+      text: "Toast rendered in the running app. Continuing...",
     },
   },
 
-  // -- Accent Color (recording: 6.93, screenshot at 8.53) --
+  // -- Accent Color (recording: 6.93, observation at 8.53) --
   {
     time: V + 6.93,
     terminal: {
@@ -148,17 +144,13 @@ export const DEMO_STEPS: DemoStep[] = [
   },
   {
     time: V + 8.53,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-  },
-  {
-    time: V + 8.7,
     terminal: {
-      type: "result",
-      text: "✓ captured → accent.png",
+      type: "claude",
+      text: "Accent color changed to purple.",
     },
   },
 
-  // -- Confetti (recording: 5.33, screenshot at 8.42) --
+  // -- Confetti (recording: 5.33, observation at 8.42) --
   {
     time: V + 5.33,
     terminal: { type: "command", text: "❯ remo call ui.confetti '{}'" },
@@ -169,11 +161,10 @@ export const DEMO_STEPS: DemoStep[] = [
   },
   {
     time: V + 8.42,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-  },
-  {
-    time: V + 8.6,
-    terminal: { type: "result", text: "✓ captured → confetti.png" },
+    terminal: {
+      type: "claude",
+      text: "Confetti animation triggered cleanly.",
+    },
   },
   {
     time: V + 8.7,
@@ -183,7 +174,7 @@ export const DEMO_STEPS: DemoStep[] = [
     },
   },
 
-  // -- Navigate to Grid (recording: 8.97, screenshot at 10.61) --
+  // -- Navigate to Grid (recording: 8.97, observation at 10.61) --
   {
     time: V + 8.97,
     terminal: {
@@ -197,11 +188,10 @@ export const DEMO_STEPS: DemoStep[] = [
   },
   {
     time: V + 10.61,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-  },
-  {
-    time: V + 10.8,
-    terminal: { type: "result", text: "✓ captured → grid.png" },
+    terminal: {
+      type: "claude",
+      text: "Grid tab is visible. Exercising scoped capabilities now.",
+    },
   },
 
   // -- Grid capabilities (recording: 11.16 – 15.95) --
@@ -229,11 +219,10 @@ export const DEMO_STEPS: DemoStep[] = [
   },
   {
     time: V + 13.28,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-  },
-  {
-    time: V + 13.45,
-    terminal: { type: "result", text: "✓ captured → scrolled.png" },
+    terminal: {
+      type: "claude",
+      text: "Items tab reached the expected scroll position.",
+    },
   },
   {
     time: V + 13.83,
@@ -259,11 +248,10 @@ export const DEMO_STEPS: DemoStep[] = [
   },
   {
     time: V + 15.95,
-    terminal: { type: "command", text: "❯ remo screenshot" },
-  },
-  {
-    time: V + 16.15,
-    terminal: { type: "result", text: "✓ captured → feed-appended.png" },
+    terminal: {
+      type: "claude",
+      text: "Feed updated with the new entry.",
+    },
   },
 
   // -- Summary --
@@ -271,7 +259,7 @@ export const DEMO_STEPS: DemoStep[] = [
     time: V + 17,
     terminal: {
       type: "claude",
-      text: "All features verified successfully. UI effects and Grid capabilities all working correctly.",
+      text: "Capability registration and runtime control are working end to end.",
     },
   },
 ];

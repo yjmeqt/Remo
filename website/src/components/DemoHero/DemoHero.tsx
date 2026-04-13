@@ -14,10 +14,10 @@ export function DemoHero() {
       {/* Tagline */}
       <div className="text-center py-8 px-6">
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-zinc-50">
-          Eyes and hands for AI agents on iOS
+          Programmable app control for AI agents on iOS
         </h1>
         <p className="text-zinc-500 mt-2 text-sm">
-          Watch Claude Code drive an iOS app through Remo — autonomously.
+          Watch Claude Code register and invoke app-defined capabilities through Remo.
         </p>
       </div>
 
