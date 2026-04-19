@@ -37,8 +37,7 @@ Project-specific Tart configuration now also lives in:
 Supporting docs and plan/spec files:
 
 - [docs/tart-dev-vm.md](/Users/yi.jiang/Developer/Remo/.worktrees/tart-vm/docs/tart-dev-vm.md)
-- [docs/superpowers/specs/2026-04-12-tart-dev-vm-design.md](/Users/yi.jiang/Developer/Remo/.worktrees/tart-vm/docs/superpowers/specs/2026-04-12-tart-dev-vm-design.md)
-- [docs/superpowers/plans/2026-04-12-tart-dev-vm.md](/Users/yi.jiang/Developer/Remo/.worktrees/tart-vm/docs/superpowers/plans/2026-04-12-tart-dev-vm.md)
+- [docs/tart-development-guide.md](/Users/yi.jiang/Developer/Remo/.worktrees/tart-vm/docs/tart-development-guide.md)
 
 Regression coverage added for the Tart shell layer and the iOS packaging path:
 
