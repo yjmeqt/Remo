@@ -4,6 +4,10 @@
 
 # Worktrees
 .worktrees/
+.tart/*
+!.tart/project.sh
+!.tart/packs/
+!.tart/packs/*.sh
 
 # Xcode user data
 xcuserdata/
@@ -35,3 +39,4 @@ swift/RemoSDK.xcframework/
 # OS
 .DS_Store
 .superpowers/
+docs/superpowers/
