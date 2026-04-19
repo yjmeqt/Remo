@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-04-19
+
+### Added
+
+- **Tart-first contributor workflow**: Reproducible Tart VM setup for contributors
+
+### Changed
+
+- **Example app**: Default to local SDK source for easier in-tree development
+- **Docs**: Repositioned Remo around capabilities
+
 ## [0.4.3] - 2026-03-29
 
 ### Added

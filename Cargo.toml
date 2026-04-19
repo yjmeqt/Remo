@@ -38,7 +38,7 @@ unsafe_code = "warn"
 unused_qualifications = "warn"
 
 [workspace.package]
-version = "0.4.3"
+version = "0.4.4"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
