@@ -39,3 +39,4 @@ swift/RemoSDK.xcframework/
 # OS
 .DS_Store
 .superpowers/
+docs/superpowers/

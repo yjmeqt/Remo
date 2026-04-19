@@ -10,11 +10,11 @@ The app includes both SwiftUI and UIKit integration examples:
 ## Run
 
 ```bash
-# Option 1: Use published SDK (default)
+# Option 1: Use local monorepo SDK (default)
 open RemoExample.xcworkspace
 
-# Option 2: Use local monorepo source (for SDK development)
-REMO_LOCAL=1 xcodebuild build -workspace RemoExample.xcworkspace -scheme RemoExample \
+# Option 2: Opt into the published SDK
+REMO_USE_REMOTE=1 xcodebuild build -workspace RemoExample.xcworkspace -scheme RemoExample \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
