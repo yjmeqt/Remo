@@ -123,6 +123,7 @@ remo-setup → remo-capabilities → remo (daily) ↔ remo-design-review (period
 | Skill | When to use |
 |-------|-------------|
 | `tart-dev-management` | After cloning Remo, when attaching a new worktree to `remo-dev`, when connecting through CLI or Remote SSH editors, or when cleaning worktree-local Tart caches |
+| `example-ios-feature-dev` | When building or changing a feature inside `examples/ios/RemoExamplePackage/` — register Remo capabilities, drive the app with `remo` CLI + XcodeBuildMCP, capture and report |
 
 When editing skill files, verify that CLI commands, SDK API references, and example code match the current implementation. Keep each skill's `references/cli.md` aligned with the others, and keep `docs/cli.md`, `README.md`, and the skill folders aligned with those distributed references.
 
@@ -135,3 +136,4 @@ When editing skill files, verify that CLI commands, SDK API references, and exam
 ## CI
 
 GitHub Actions on `macos-26`. Two jobs: check (fmt + clippy + unit tests), e2e (build SDK/CLI/app, launch on simulator, exercise all capabilities via `scripts/e2e-test.sh`). Release workflow builds XCFramework, creates GitHub release, and auto-updates `remo-spm` repo.
+- If using XcodeBuildMCP, use the installed XcodeBuildMCP skill before calling XcodeBuildMCP tools.
