@@ -129,6 +129,24 @@ REMO_TART_OPEN_VSCODE_DEV_VM_SCRIPT_OVERRIDE="${STUB_SCRIPTS}/open-vscode-dev-vm
 assert_eq "--new-window ${WORKTREE_DIR}" "$(cat "${VSCODE_LOG}")" \
     "connect vscode should forward target selection to the VS Code launcher"
 
+PATH="${STUB_BIN}:${PATH}" \
+REMO_TART_SSH_DEV_VM_SCRIPT_OVERRIDE="${STUB_SCRIPTS}/ssh-dev-vm.sh" \
+    bash "${ROOT}/scripts/tart/connect-dev-vm.sh" cli
+assert_eq "" "$(cat "${SSH_LOG}")" \
+    "connect cli should support being called without optional arguments"
+
+PATH="${STUB_BIN}:${PATH}" \
+REMO_TART_OPEN_CURSOR_DEV_VM_SCRIPT_OVERRIDE="${STUB_SCRIPTS}/open-cursor-dev-vm.sh" \
+    bash "${ROOT}/scripts/tart/connect-dev-vm.sh" cursor
+assert_eq "" "$(cat "${CURSOR_LOG}")" \
+    "connect cursor should support being called without optional arguments"
+
+PATH="${STUB_BIN}:${PATH}" \
+REMO_TART_OPEN_VSCODE_DEV_VM_SCRIPT_OVERRIDE="${STUB_SCRIPTS}/open-vscode-dev-vm.sh" \
+    bash "${ROOT}/scripts/tart/connect-dev-vm.sh" vscode
+assert_eq "" "$(cat "${VSCODE_LOG}")" \
+    "connect vscode should support being called without optional arguments"
+
 mkdir -p "${WORKTREE_DIR}/.tart"
 cat > "${WORKTREE_DIR}/.tart/project.sh" <<'EOF'
 #!/usr/bin/env bash

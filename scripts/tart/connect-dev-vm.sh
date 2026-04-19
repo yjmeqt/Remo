@@ -64,42 +64,42 @@ done
 case "${MODE}" in
     cli)
         CLI_SCRIPT="${REMO_TART_SSH_DEV_VM_SCRIPT_OVERRIDE:-${SCRIPT_DIR}/ssh-dev-vm.sh}"
-        CLI_ARGS=()
+        set --
         if [[ "${#VM_ARGS[@]}" -gt 0 ]]; then
-            CLI_ARGS+=("${VM_ARGS[@]}")
+            set -- "$@" "${VM_ARGS[@]}"
         fi
         if [[ -n "${TARGET_ARG}" ]]; then
-            CLI_ARGS+=("${TARGET_ARG}")
+            set -- "$@" "${TARGET_ARG}"
         fi
-        exec "${CLI_SCRIPT}" "${CLI_ARGS[@]}"
+        exec "${CLI_SCRIPT}" "$@"
         ;;
     cursor)
         CURSOR_SCRIPT="${REMO_TART_OPEN_CURSOR_DEV_VM_SCRIPT_OVERRIDE:-${SCRIPT_DIR}/open-cursor-dev-vm.sh}"
-        CURSOR_ARGS=()
+        set --
         if [[ "${#VM_ARGS[@]}" -gt 0 ]]; then
-            CURSOR_ARGS+=("${VM_ARGS[@]}")
+            set -- "$@" "${VM_ARGS[@]}"
         fi
         if [[ "${#EDITOR_FLAGS[@]}" -gt 0 ]]; then
-            CURSOR_ARGS+=("${EDITOR_FLAGS[@]}")
+            set -- "$@" "${EDITOR_FLAGS[@]}"
         fi
         if [[ -n "${TARGET_ARG}" ]]; then
-            CURSOR_ARGS+=("${TARGET_ARG}")
+            set -- "$@" "${TARGET_ARG}"
         fi
-        exec "${CURSOR_SCRIPT}" "${CURSOR_ARGS[@]}"
+        exec "${CURSOR_SCRIPT}" "$@"
         ;;
     vscode)
         VSCODE_SCRIPT="${REMO_TART_OPEN_VSCODE_DEV_VM_SCRIPT_OVERRIDE:-${SCRIPT_DIR}/open-vscode-dev-vm.sh}"
-        VSCODE_ARGS=()
+        set --
         if [[ "${#VM_ARGS[@]}" -gt 0 ]]; then
-            VSCODE_ARGS+=("${VM_ARGS[@]}")
+            set -- "$@" "${VM_ARGS[@]}"
         fi
         if [[ "${#EDITOR_FLAGS[@]}" -gt 0 ]]; then
-            VSCODE_ARGS+=("${EDITOR_FLAGS[@]}")
+            set -- "$@" "${EDITOR_FLAGS[@]}"
         fi
         if [[ -n "${TARGET_ARG}" ]]; then
-            VSCODE_ARGS+=("${TARGET_ARG}")
+            set -- "$@" "${TARGET_ARG}"
         fi
-        exec "${VSCODE_SCRIPT}" "${VSCODE_ARGS[@]}"
+        exec "${VSCODE_SCRIPT}" "$@"
         ;;
     -h|--help)
         usage
