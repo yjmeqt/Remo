@@ -81,7 +81,7 @@ The Rust side owns a global `OnceLock<Mutex<RemoGlobal>>` holding the tokio runt
 
 ### Swift layer
 
-`swift/RemoSwift/` wraps the C FFI in a Swift-friendly API. The `RemoSDK.xcframework` is the binary artifact distributed via the `remo-spm` repo. `REMO_LOCAL=1` env var switches example app to use local monorepo source instead of the published SPM package.
+`swift/RemoSwift/` wraps the C FFI in a Swift-friendly API. The `RemoSDK.xcframework` is the binary artifact distributed via the `remo-spm` repo. The example app defaults to the local monorepo package and uses `REMO_USE_REMOTE=1` only when explicitly validating the published SPM package.
 
 The SDK is `#if DEBUG` only — it does not ship in release builds.
 

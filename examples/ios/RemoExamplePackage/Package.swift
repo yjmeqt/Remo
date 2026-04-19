@@ -3,17 +3,17 @@
 import PackageDescription
 import Foundation
 
-// Set REMO_LOCAL=1 to use the monorepo source (for development).
-// Default: use the published remo-spm binary package.
-let useLocal = ProcessInfo.processInfo.environment["REMO_LOCAL"] != nil
+// Default: use the monorepo source package.
+// Set REMO_USE_REMOTE=1 to opt into the published remo-spm package.
+let useRemote = ProcessInfo.processInfo.environment["REMO_USE_REMOTE"] != nil
 
-let remoDependency: Package.Dependency = useLocal
-    ? .package(path: "../../../swift/RemoSwift")
-    : .package(url: "https://github.com/yjmeqt/remo-spm.git", from: "0.4.0")
+let remoDependency: Package.Dependency = useRemote
+    ? .package(url: "https://github.com/yjmeqt/remo-spm.git", from: "0.4.0")
+    : .package(path: "../../../swift/RemoSwift")
 
 let remoProduct: Target.Dependency = .product(
     name: "RemoSwift",
-    package: useLocal ? "RemoSwift" : "remo-spm"
+    package: useRemote ? "remo-spm" : "RemoSwift"
 )
 
 let package = Package(

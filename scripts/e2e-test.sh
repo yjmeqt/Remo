@@ -19,6 +19,7 @@ set -euo pipefail
 #   ARTIFACTS_DIR  — where to save screenshots/recordings (default: /tmp/remo-e2e)
 #   DERIVED_DATA_PATH — explicit Xcode DerivedData path for RemoExample builds
 #   REMO_BIN       — path to remo binary (default: built from source)
+#   REMO_USE_REMOTE — set to 1 to build the example app against published remo-spm
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -173,7 +174,7 @@ build_example_app() {
         xcodebuild_args+=(-derivedDataPath "$DERIVED_DATA_PATH")
     fi
 
-    REMO_LOCAL=1 xcodebuild "${xcodebuild_args[@]}" 2>&1 | tail -5
+    xcodebuild "${xcodebuild_args[@]}" 2>&1 | tail -5
 }
 
 find_app_path() {
@@ -220,7 +221,6 @@ else
 
     log "Building example app..."
     resolve_device_uuid
-
     build_example_app
 
     # Find the built app bundle

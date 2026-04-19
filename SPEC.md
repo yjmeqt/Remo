@@ -499,7 +499,7 @@ The release CI pipeline (`release.yml`) builds the XCFramework, zips it, and pus
 
 ### 8.4 Xcode integration
 
-1. Add the `remo-spm` SPM package dependency (or the local `RemoSwift` package for development).
+1. Consumer apps add the `remo-spm` SPM package dependency. Inside this monorepo, the example app defaults to the local `RemoSwift` package and uses `REMO_USE_REMOTE=1` when explicitly validating the published package.
 2. Register custom capabilities via `Remo.register(...)`. The server auto-starts on first API access — no explicit `Remo.start()` needed.
 3. Built-in capabilities (view tree, screenshot, device/app info) are available immediately — no registration needed.
 
@@ -604,7 +604,7 @@ CI also runs `scripts/e2e-test.sh` which builds the SDK, CLI, and example app, l
 | Dependency | Source | Used for |
 |---|---|---|
 | `CRemo` | Binary target in `RemoSDK.xcframework` | Rust FFI binding |
-| `RemoSwift` | Local SPM package (or via `remo-spm` remote) | Swift wrapper API |
+| `RemoSwift` | Local SPM package in this monorepo example, or via `remo-spm` for published distribution | Swift wrapper API |
 
 ### 10.3 Build tools
 
