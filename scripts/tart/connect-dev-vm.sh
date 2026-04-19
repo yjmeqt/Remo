@@ -71,7 +71,7 @@ case "${MODE}" in
         if [[ -n "${TARGET_ARG}" ]]; then
             CLI_ARGS+=("${TARGET_ARG}")
         fi
-        exec "${CLI_SCRIPT}" "${CLI_ARGS[@]}"
+        exec "${CLI_SCRIPT}" ${CLI_ARGS[@]+"${CLI_ARGS[@]}"}
         ;;
     cursor)
         CURSOR_SCRIPT="${REMO_TART_OPEN_CURSOR_DEV_VM_SCRIPT_OVERRIDE:-${SCRIPT_DIR}/open-cursor-dev-vm.sh}"
@@ -85,7 +85,7 @@ case "${MODE}" in
         if [[ -n "${TARGET_ARG}" ]]; then
             CURSOR_ARGS+=("${TARGET_ARG}")
         fi
-        exec "${CURSOR_SCRIPT}" "${CURSOR_ARGS[@]}"
+        exec "${CURSOR_SCRIPT}" ${CURSOR_ARGS[@]+"${CURSOR_ARGS[@]}"}
         ;;
     vscode)
         VSCODE_SCRIPT="${REMO_TART_OPEN_VSCODE_DEV_VM_SCRIPT_OVERRIDE:-${SCRIPT_DIR}/open-vscode-dev-vm.sh}"
@@ -99,7 +99,7 @@ case "${MODE}" in
         if [[ -n "${TARGET_ARG}" ]]; then
             VSCODE_ARGS+=("${TARGET_ARG}")
         fi
-        exec "${VSCODE_SCRIPT}" "${VSCODE_ARGS[@]}"
+        exec "${VSCODE_SCRIPT}" ${VSCODE_ARGS[@]+"${VSCODE_ARGS[@]}"}
         ;;
     -h|--help)
         usage
