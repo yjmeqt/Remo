@@ -459,7 +459,9 @@ extension UIKitDemoViewController {
     private func handleReset() -> GridFeedResetResponse {
         store.resetFeed()
         store.updateVerticalOffset(0, for: .feed)
+        store.updateVerticalOffset(0, for: .items)
         feedPage?.apply(cards: store.cards(for: .feed), restoringOffset: 0)
+        itemsPage?.apply(contacts: store.contacts(for: .items), restoringOffset: 0)
         return .init(tab: .feed)
     }
 
@@ -489,8 +491,8 @@ extension UIKitDemoViewController {
             }
             return .init(tab: tab, visible: visible, total: store.count(for: .feed))
         case .items:
-            let visible = (itemsPage?.visibleItems() ?? []).map(GridVisibleItem.item)
-            return .init(tab: tab, visible: visible, total: currentItems.count)
+            let visible = (itemsPage?.visibleContacts() ?? []).map { GridVisibleItem.item($0.name) }
+            return .init(tab: tab, visible: visible, total: store.count(for: .items))
         }
     }
 }
