@@ -17,6 +17,7 @@ set -euo pipefail
 #   DEVICE_UUID    — simulator UDID (default: first booted device)
 #   SKIP_BUILD     — set to 1 to skip build phase
 #   ARTIFACTS_DIR  — where to save screenshots/recordings (default: /tmp/remo-e2e)
+#   DERIVED_DATA_PATH — explicit Xcode DerivedData path for RemoExample builds
 #   REMO_BIN       — path to remo binary (default: built from source)
 # =============================================================================
 
@@ -132,14 +133,67 @@ maybe_screenshot() {
     fi
 }
 
-find_built_app() {
-    find ~/Library/Developer/Xcode/DerivedData \
-        -path "*/Debug-iphonesimulator/RemoExample.app" \
-        -maxdepth 5 \
-        -type d \
-        -print0 2>/dev/null \
-        | xargs -0 ls -td 2>/dev/null \
-        | head -1
+resolve_device_uuid() {
+    local booted_uuid available_uuid
+
+    if [ -n "${DEVICE_UUID:-}" ]; then
+        return 0
+    fi
+
+    booted_uuid="$(xcrun simctl list devices booted -j | jq -r '.devices[][] | select(.state == "Booted") | .udid' | head -1)"
+    if [ -n "${booted_uuid}" ]; then
+        DEVICE_UUID="${booted_uuid}"
+        return 0
+    fi
+
+    available_uuid="$(xcrun simctl list devices available -j | jq -r '.devices[][] | select(.isAvailable == true and (.name | startswith("iPhone"))) | .udid' | tail -1)"
+    if [ -z "${available_uuid}" ]; then
+        echo -e "${RED}ERROR:${RESET} No available iPhone simulator found."
+        exit 1
+    fi
+
+    DEVICE_UUID="${available_uuid}"
+    xcrun simctl boot "$DEVICE_UUID" >/dev/null 2>&1 || true
+    xcrun simctl bootstatus "$DEVICE_UUID" -b
+}
+
+build_example_app() {
+    local -a xcodebuild_args
+    xcodebuild_args=(
+        clean
+        build
+        -workspace "$ROOT/examples/ios/RemoExample.xcworkspace"
+        -scheme RemoExample
+        -destination "platform=iOS Simulator,id=$DEVICE_UUID"
+        -configuration Debug
+        -quiet
+    )
+
+    if [ -n "${DERIVED_DATA_PATH:-}" ]; then
+        xcodebuild_args+=(-derivedDataPath "$DERIVED_DATA_PATH")
+    fi
+
+    REMO_LOCAL=1 xcodebuild "${xcodebuild_args[@]}" 2>&1 | tail -5
+}
+
+find_app_path() {
+    if [ -n "${DERIVED_DATA_PATH:-}" ]; then
+        find "${DERIVED_DATA_PATH}" \
+            -path "*/Debug-iphonesimulator/RemoExample.app" \
+            -maxdepth 5 \
+            -type d \
+            -print0 2>/dev/null \
+            | xargs -0 ls -td 2>/dev/null \
+            | head -1
+    else
+        find ~/Library/Developer/Xcode/DerivedData \
+            -path "*/Debug-iphonesimulator/RemoExample.app" \
+            -maxdepth 5 \
+            -type d \
+            -print0 2>/dev/null \
+            | xargs -0 ls -td 2>/dev/null \
+            | head -1
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -165,24 +219,12 @@ else
     REMO_BIN="${REMO_BIN:-$ROOT/target/debug/remo}"
 
     log "Building example app..."
-    # Find a booted simulator for the build destination
-    DEVICE_UUID="${DEVICE_UUID:-$(xcrun simctl list devices booted -j | jq -r '.devices[][] | select(.state == "Booted") | .udid' | head -1)}"
-    if [ -z "$DEVICE_UUID" ]; then
-        echo -e "${RED}ERROR:${RESET} No booted simulator found. Boot one with:"
-        echo "  xcrun simctl boot <UDID>"
-        exit 1
-    fi
+    resolve_device_uuid
 
-    REMO_LOCAL=1 xcodebuild clean build \
-        -workspace "$ROOT/examples/ios/RemoExample.xcworkspace" \
-        -scheme RemoExample \
-        -destination "platform=iOS Simulator,id=$DEVICE_UUID" \
-        -configuration Debug \
-        -quiet \
-        2>&1 | tail -5
+    build_example_app
 
     # Find the built app bundle
-    APP_PATH=$(find_built_app)
+    APP_PATH="$(find_app_path)"
     if [ -z "$APP_PATH" ]; then
         echo -e "${RED}ERROR:${RESET} Could not find built RemoExample.app in DerivedData"
         exit 1
@@ -197,13 +239,13 @@ echo "  remo: $REMO_BIN"
 
 log "Phase 1: Install & Launch"
 
-DEVICE_UUID="${DEVICE_UUID:-$(xcrun simctl list devices booted -j | jq -r '.devices[][] | select(.state == "Booted") | .udid' | head -1)}"
+resolve_device_uuid
 DEVICE_NAME=$(xcrun simctl list devices -j | jq -r --arg uuid "$DEVICE_UUID" '.devices[][] | select(.udid == $uuid) | .name')
 echo "  Device: $DEVICE_NAME ($DEVICE_UUID)"
 
 # Find app path if not set during build phase
 if [ -z "${APP_PATH:-}" ]; then
-    APP_PATH=$(find_built_app)
+    APP_PATH="$(find_app_path)"
     if [ -z "$APP_PATH" ]; then
         echo -e "${RED}ERROR:${RESET} RemoExample.app not found. Run without SKIP_BUILD first."
         exit 1

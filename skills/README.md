@@ -2,7 +2,14 @@
 
 AI agent skills for capability-driven iOS development with Remo.
 
-## Skills
+This repository ships two categories of skills:
+
+- distributed product skills for downstream iOS projects using Remo
+- repo-internal contributor skills for working on Remo itself
+
+## Distributed Product Skills
+
+These are the skills intended to be copied into downstream iOS projects.
 
 | Skill | Type | Purpose | When to use |
 |-------|------|---------|-------------|
@@ -11,7 +18,7 @@ AI agent skills for capability-driven iOS development with Remo.
 | [`remo`](remo/SKILL.md) | Flexible, ongoing | Capability-driven development workflow with timeline reports | Every task — drive app state, verify, debug, test, explore |
 | [`remo-design-review`](remo-design-review/SKILL.md) | Rigid, periodic | Compare app against Figma designs | Before release, after UI changes, design QA |
 
-## How They Fit Together
+### Product Skill Flow
 
 ```
 remo-setup              One-time: add SDK, wire Remo.start(), verify connection
@@ -25,7 +32,7 @@ remo-design-review      Periodic: Figma → state setup → compare captures →
     └── feeds back ──────────────┘  (missing capabilities → TODO → implement → re-review)
 ```
 
-## Artifacts
+### Product Skill Artifacts
 
 ```
 .remo/
@@ -44,12 +51,12 @@ remo-design-review      Periodic: Figma → state setup → compare captures →
             └── app/                   # App screenshots from Remo
 ```
 
-## Installation
+### Install Product Skills
 
-Skills are installed **per-repo** — each iOS project gets its own copy in `.claude/skills/`.
+Distributed product skills are installed **per-repo** into downstream iOS
+projects at `.claude/skills/`.
 
 ```bash
-# From your iOS project root
 mkdir -p .claude/skills
 cp -R /path/to/Remo/skills/remo-setup .claude/skills/
 cp -R /path/to/Remo/skills/remo-capabilities .claude/skills/
@@ -57,15 +64,23 @@ cp -R /path/to/Remo/skills/remo .claude/skills/
 cp -R /path/to/Remo/skills/remo-design-review .claude/skills/
 ```
 
-<!-- TODO: Automate skill installation — options: `remo init` CLI command, or dedicated install script that copies skills to `.claude/skills/` -->
+## Repo-Internal Contributor Skills
+
+These are for working on the Remo repository itself and should not be copied
+into downstream application repos.
+
+| Skill | Purpose | When to use |
+|-------|---------|-------------|
+| [`tart-dev-management`](tart-dev-management/SKILL.md) | Manage the shared `remo-dev` contributor VM and attach worktrees | After cloning Remo, when opening a new worktree, when connecting through CLI or Remote SSH editors, or when cleaning worktree-local Tart caches |
 
 ## CLI Reference
 
-Each skill folder is self-contained and ships its own `references/cli.md`.
+Each distributed product skill folder is self-contained and ships its own
+`references/cli.md`.
 
 - Start with [`remo-setup/references/cli.md`](remo-setup/references/cli.md) for the broadest onboarding guide
 - That reference now includes both binary installation paths and post-install verification commands
-- Use the `references/cli.md` inside the specific skill you are running for command syntax and caveats that matter to that workflow
+- Use the `references/cli.md` inside the specific distributed product skill you are running for command syntax and caveats that matter to that workflow
 
 ## Requirements
 

@@ -47,6 +47,7 @@ esac
 
 HEADER="swift/RemoSwift/Sources/RemoSwift/include/remo.h"
 XCFRAMEWORK="swift/RemoSDK.xcframework"
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 
 # ---------------------------------------------------------------------------
 # Build
@@ -88,7 +89,7 @@ MODULEMAP
 
 if [ "$TARGETS" = "sim" ]; then
     # Simulator-only XCFramework (single architecture).
-    SIM_LIB="target/aarch64-apple-ios-sim/$PROFILE/libremo_sdk.a"
+    SIM_LIB="$TARGET_DIR/aarch64-apple-ios-sim/$PROFILE/libremo_sdk.a"
     TMPDIR_SIM=$(mktemp -d)
     prepare_headers "$TMPDIR_SIM"
     cp "$SIM_LIB" "$TMPDIR_SIM/"
@@ -100,7 +101,7 @@ if [ "$TARGETS" = "sim" ]; then
 
 elif [ "$TARGETS" = "device" ]; then
     # Device-only XCFramework (single architecture).
-    DEVICE_LIB="target/aarch64-apple-ios/$PROFILE/libremo_sdk.a"
+    DEVICE_LIB="$TARGET_DIR/aarch64-apple-ios/$PROFILE/libremo_sdk.a"
     TMPDIR_DEVICE=$(mktemp -d)
     prepare_headers "$TMPDIR_DEVICE"
     cp "$DEVICE_LIB" "$TMPDIR_DEVICE/"
@@ -112,13 +113,13 @@ elif [ "$TARGETS" = "device" ]; then
 
 else
     # Full XCFramework: device + universal simulator (arm64 + x86_64).
-    DEVICE_LIB="target/aarch64-apple-ios/$PROFILE/libremo_sdk.a"
-    SIM_ARM_LIB="target/aarch64-apple-ios-sim/$PROFILE/libremo_sdk.a"
-    SIM_X86_LIB="target/x86_64-apple-ios/$PROFILE/libremo_sdk.a"
+    DEVICE_LIB="$TARGET_DIR/aarch64-apple-ios/$PROFILE/libremo_sdk.a"
+    SIM_ARM_LIB="$TARGET_DIR/aarch64-apple-ios-sim/$PROFILE/libremo_sdk.a"
+    SIM_X86_LIB="$TARGET_DIR/x86_64-apple-ios/$PROFILE/libremo_sdk.a"
 
     echo "==> Creating universal simulator library..."
-    mkdir -p target/sim-universal
-    SIM_LIB="target/sim-universal/libremo_sdk.a"
+    mkdir -p "$TARGET_DIR/sim-universal"
+    SIM_LIB="$TARGET_DIR/sim-universal/libremo_sdk.a"
     lipo -create "$SIM_ARM_LIB" "$SIM_X86_LIB" -output "$SIM_LIB"
 
     TMPDIR_DEVICE=$(mktemp -d)
