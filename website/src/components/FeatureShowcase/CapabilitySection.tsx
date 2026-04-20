@@ -69,32 +69,84 @@ function RegisterCode() {
   return (
     <div style={{ fontFamily: "'SF Mono','Fira Code',monospace" }}>
       <div className={comment}>
-        {"// Your iOS app — one line to expose a capability"}
+        {"// Typed capability + Swift macros — debug-only, auto-unregister"}
       </div>
       <div>
-        <span className={kw}>Remo</span>
-        {"."}<span className={fn}>register</span>
-        {"("}<span className={str}>"counter.increment"</span>
-        {") { params "}
+        <span className={kw}>enum</span>{" "}
+        <span className={fn}>Increment</span>
+        {": "}
+        <span className={kw}>RemoCapability</span>
+        {" {"}
+      </div>
+      <div className="pl-4">
+        <span className={kw}>static let</span>{" "}
+        <span className={plain}>name</span>
+        {" = "}
+        <span className={str}>"counter.increment"</span>
+      </div>
+      <div className="pl-4">
+        <span className={kw}>struct</span>{" "}
+        <span className={fn}>Request</span>
+        {": "}
+        <span className={kw}>Decodable</span>
+        {" { "}
+        <span className={kw}>let</span>{" "}
+        <span className={plain}>amount</span>
+        {": "}
+        <span className={kw}>Int</span>
+        {"? }"}
+      </div>
+      <div className="pl-4">
+        <span className={kw}>struct</span>{" "}
+        <span className={fn}>Response</span>
+        {": "}
+        <span className={kw}>Encodable</span>
+        {" { "}
+        <span className={kw}>let</span>{" "}
+        <span className={plain}>count</span>
+        {": "}
+        <span className={kw}>Int</span>
+        {" }"}
+      </div>
+      <div>{"}"}</div>
+      <div>&nbsp;</div>
+      <div>
+        <span className={kw}>await</span>{" "}
+        <span className={fn}>#Remo</span>
+        {" {"}
+      </div>
+      <div className="pl-4">
+        <span className={kw}>await</span>{" "}
+        <span className={fn}>#remoScope</span>
+        {" {"}
+      </div>
+      <div className="pl-8">
+        <span className={fn}>#remoCap</span>
+        {"("}
+        <span className={plain}>Increment</span>
+        {".self) { "}
+        <span className={plain}>req</span>{" "}
         <span className={kw}>in</span>
       </div>
-      <div className="pl-4">
+      <div className="pl-12">
         <span className={plain}>counter</span>
-        {" += params["}
-        <span className={str}>"amount"</span>
-        {"] "}
-        <span className={kw}>as?</span>
-        {" "}<span className={plain}>Int</span>
-        {" ?? "}<span className={plain}>1</span>
+        {" += "}
+        <span className={plain}>req</span>
+        {".amount ?? "}
+        <span className={plain}>1</span>
       </div>
-      <div className="pl-4">
+      <div className="pl-12">
         <span className={kw}>return</span>
-        {" ["}
-        <span className={str}>"count"</span>
+        {" ."}
+        <span className={fn}>init</span>
+        {"("}
+        <span className={plain}>count</span>
         {": "}
         <span className={plain}>counter</span>
-        {"]"}
+        {")"}
       </div>
+      <div className="pl-8">{"}"}</div>
+      <div className="pl-4">{"}"}</div>
       <div>{"}"}</div>
     </div>
   );
@@ -152,8 +204,8 @@ export function CapabilitySection() {
       <SectionHeader
         label="Capability Invocation"
         labelColor="#34d399"
-        title="Register in Swift. Call from anywhere."
-        subtitle="Define named handlers in your app. Agents discover and invoke them at runtime — structured input, structured output."
+        title="Declare in Swift. Call from anywhere."
+        subtitle="Swift macros expose typed capabilities from your app. Agents discover and invoke them at runtime — structured input, structured output."
       />
 
       {/* Pipeline */}

@@ -65,14 +65,14 @@ export const DEMO_STEPS: DemoStep[] = [
     time: 5,
     terminal: {
       type: "claude",
-      text: "I see UI effects and a Grid tab with feed and items. I'll register capabilities for each one.",
+      text: "I see UI effects and a Grid tab with feed and items. I'll declare typed capabilities for each one.",
     },
   },
   {
     time: 6.5,
     terminal: {
       type: "command",
-      text: '❯ Edit UIKitDemoViewController.swift — added Remo.register("grid.*", ...)',
+      text: "❯ Edit UIKitDemoViewController.swift — added #Remo { #remoScope { #remoCap(Grid*.self) { … } } }",
     },
   },
   {
