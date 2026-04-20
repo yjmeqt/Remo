@@ -259,7 +259,9 @@ fi
 
 if remo_tart_vm_is_running "${VM_NAME}" && [[ "${MOUNTS_CHANGED}" -eq 1 ]]; then
     remo_tart_launchd_remove "${VM_NAME}"
-    tart stop "${VM_NAME}"
+    if remo_tart_vm_is_running "${VM_NAME}"; then
+        tart stop "${VM_NAME}"
+    fi
 fi
 
 if ! remo_tart_vm_is_running "${VM_NAME}"; then
