@@ -40,3 +40,6 @@ swift/RemoSDK.xcframework/
 .DS_Store
 .superpowers/
 docs/superpowers/
+
+#pnpm
+.pnpm-store/
