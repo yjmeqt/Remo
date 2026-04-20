@@ -26,9 +26,11 @@ tart_project_memory_gb() {
 
 tart_project_packs() {
     cat <<'EOF'
+shell
 ios
 rust
 node
+agents
 EOF
 }
 
