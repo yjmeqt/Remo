@@ -101,6 +101,31 @@ scripts/tart/doctor-dev-vm.sh
 Use `destroy-dev-vm.sh --force` only when you intentionally want to reset the
 entire project VM, not as a substitute for worktree-local cache cleanup.
 
+### 6. Shell and agent tooling
+
+Provisioning the VM installs:
+
+- **`shell` pack** — sets zsh as the guest login shell, installs oh-my-zsh
+  with the `clean` theme, and enables these plugins: `git`, `macos`, `rust`,
+  `node`, `npm`, `xcode`, `gh`, `zsh-autosuggestions`, `zsh-syntax-highlighting`,
+  `zsh-completions`. It also writes `~/.remo-worktree-env.sh` so new
+  interactive terminals inherit the worktree's cargo target dir, npm cache,
+  and DerivedData path.
+- **`agents` pack** — installs the Claude Code CLI (`claude`) and the
+  XcodeBuildMCP CLI (`xcodebuildmcp`) as npm globals.
+
+Claude Code login is **not** automated. After the first provision, open an
+interactive shell in the VM (`scripts/tart/connect-dev-vm.sh cli`) and run:
+
+```bash
+claude
+```
+
+Follow the prompts to complete login. This is a one-time step per VM.
+
+To opt a downstream project out of either pack, edit `.tart/project.sh` and
+remove the pack name from `tart_project_packs`.
+
 ## Common Mistakes
 
 - Do not create a new VM per worktree. Remo uses one shared `remo-dev` VM per
