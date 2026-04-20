@@ -94,7 +94,7 @@ assert_contains "${status_output}" "launchd_job=true" \
     "status helper should report the launchd job presence"
 assert_contains "${status_output}" "ssh_key_present=true" \
     "status helper should report when the managed SSH key exists"
-assert_contains "${status_output}" "packs=ios,rust,node" \
+assert_contains "${status_output}" "packs=shell,ios,rust,node,agents" \
     "status helper should report the enabled pack set from the project manifest"
 assert_contains "${status_output}" "mount_count=2" \
     "status helper should count mounts from the manifest"

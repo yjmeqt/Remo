@@ -75,7 +75,7 @@ assert_eq "${project_config_override_root}/custom-project.sh" "$(remo_tart_proje
 unset REMO_TART_PROJECT_CONFIG_PATH_OVERRIDE
 rm -rf "${project_config_override_root}"
 packs_csv="$(remo_tart_enabled_packs | paste -sd, -)"
-assert_eq "ios,rust,node" "${packs_csv}" \
+assert_eq "shell,ios,rust,node,agents" "${packs_csv}" \
     "enabled packs should come from the repo-local Tart project manifest"
 assert_eq "ghcr.io/cirruslabs/macos-tahoe-xcode:26" "$(remo_tart_project_base_image)" \
     "project base image should resolve from the project manifest"
