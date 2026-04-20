@@ -12,7 +12,7 @@ readonly REMO_TART_SHELL_GUEST_USER="${REMO_TART_GUEST_USERNAME:-admin}"
 readonly REMO_TART_SHELL_ZSHRC_TEMPLATE='export ZSH="$HOME/.oh-my-zsh"
 ZSH_THEME="clean"
 plugins=(
-  git macos rust node npm xcode gh
+  git macos rust node npm xcode gh vi-mode
   zsh-autosuggestions zsh-syntax-highlighting zsh-completions
 )
 source "$ZSH/oh-my-zsh.sh"

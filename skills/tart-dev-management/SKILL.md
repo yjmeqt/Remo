@@ -107,8 +107,9 @@ Provisioning the VM installs:
 
 - **`shell` pack** — sets zsh as the guest login shell, installs oh-my-zsh
   with the `clean` theme, and enables these plugins: `git`, `macos`, `rust`,
-  `node`, `npm`, `xcode`, `gh`, `zsh-autosuggestions`, `zsh-syntax-highlighting`,
-  `zsh-completions`. It also writes `~/.remo-worktree-env.sh` so new
+  `node`, `npm`, `xcode`, `gh`, `vi-mode`, `zsh-autosuggestions`,
+  `zsh-syntax-highlighting`, `zsh-completions`. It also writes
+  `~/.remo-worktree-env.sh` so new
   interactive terminals inherit the worktree's cargo target dir, npm cache,
   and DerivedData path.
 - **`agents` pack** — installs the Claude Code CLI (`claude`) and the
