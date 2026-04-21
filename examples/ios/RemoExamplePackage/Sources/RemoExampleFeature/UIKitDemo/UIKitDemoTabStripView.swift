@@ -2,80 +2,114 @@
 import UIKit
 
 final class UIKitDemoTabStripView: UIView {
-    private let scrollView = UIScrollView()
-    private let stackView = UIStackView()
-    private var buttons: [UIKitDemoTab: UIButton] = [:]
-    
+    private let rowStack = UIStackView()
+    private let separator = UIView()
+    private var buttons: [UIKitDemoTab: TabButton] = [:]
+
     var onSelection: ((UIKitDemoTab) -> Void)?
-    
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         configure()
     }
-    
+
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     func updateTabs(_ tabs: [UIKitDemoTab], selected: UIKitDemoTab) {
         if buttons.isEmpty {
             tabs.forEach { tab in
-                let button = UIButton(type: .system)
-                var configuration = UIButton.Configuration.filled()
-                configuration.cornerStyle = .capsule
-                configuration.contentInsets = .init(top: 8, leading: 14, bottom: 8, trailing: 14)
-                configuration.title = tab.title
-                button.configuration = configuration
+                let button = TabButton(tab: tab)
                 button.addAction(
                     UIAction { [weak self] _ in
                         self?.onSelection?(tab)
                     },
                     for: .touchUpInside
                 )
-                stackView.addArrangedSubview(button)
+                rowStack.addArrangedSubview(button)
                 buttons[tab] = button
             }
         }
-        
+
         buttons.forEach { tab, button in
-            var configuration = button.configuration ?? .filled()
-            let isSelected = tab == selected
-            configuration.baseBackgroundColor = isSelected ? .label : .secondarySystemFill
-            configuration.baseForegroundColor = isSelected ? .systemBackground : .label
-            button.configuration = configuration
-        }
-        
-        if let selectedButton = buttons[selected] {
-            scrollView.scrollRectToVisible(selectedButton.frame.insetBy(dx: -16, dy: 0), animated: true)
+            button.setSelected(tab == selected)
         }
     }
-    
+
     private func configure() {
-        scrollView.showsHorizontalScrollIndicator = false
-        
-        stackView.axis = .horizontal
-        stackView.alignment = .fill
-        stackView.spacing = 12
-        
-        addSubview(scrollView)
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        backgroundColor = .clear
+
+        rowStack.axis = .horizontal
+        rowStack.alignment = .fill
+        rowStack.distribution = .fillEqually
+        rowStack.spacing = 12
+        rowStack.isLayoutMarginsRelativeArrangement = true
+        rowStack.layoutMargins = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+
+        separator.backgroundColor = UIColor(white: 0, alpha: 0.08)
+
+        addSubview(rowStack)
+        addSubview(separator)
+        rowStack.translatesAutoresizingMaskIntoConstraints = false
+        separator.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            rowStack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            rowStack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            rowStack.topAnchor.constraint(equalTo: topAnchor),
+            rowStack.bottomAnchor.constraint(equalTo: separator.topAnchor),
+            separator.leadingAnchor.constraint(equalTo: leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: trailingAnchor),
+            separator.bottomAnchor.constraint(equalTo: bottomAnchor),
+            separator.heightAnchor.constraint(equalToConstant: 0.5),
         ])
-        
-        scrollView.addSubview(stackView)
-        stackView.translatesAutoresizingMaskIntoConstraints = false
+    }
+}
+
+private final class TabButton: UIControl {
+    private let titleLabel = UILabel()
+    private let underline = UIView()
+    private let tab: UIKitDemoTab
+
+    init(tab: UIKitDemoTab) {
+        self.tab = tab
+        super.init(frame: .zero)
+
+        titleLabel.text = tab.title
+        titleLabel.textAlignment = .center
+        titleLabel.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+
+        underline.backgroundColor = UIColor(white: 29 / 255, alpha: 1)
+        underline.isHidden = true
+
+        addSubview(titleLabel)
+        addSubview(underline)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        underline.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-            stackView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            stackView.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            titleLabel.bottomAnchor.constraint(equalTo: underline.topAnchor, constant: -12),
+            underline.leadingAnchor.constraint(equalTo: leadingAnchor),
+            underline.trailingAnchor.constraint(equalTo: trailingAnchor),
+            underline.bottomAnchor.constraint(equalTo: bottomAnchor),
+            underline.heightAnchor.constraint(equalToConstant: 2),
         ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setSelected(_ selected: Bool) {
+        titleLabel.font = UIFont.systemFont(ofSize: 14, weight: selected ? .bold : .medium)
+        titleLabel.textColor = selected
+            ? UIColor(white: 29 / 255, alpha: 1)
+            : UIColor(white: 29 / 255, alpha: 0.48)
+        underline.isHidden = !selected
     }
 }
 #endif
