@@ -6,6 +6,7 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
     private let tabStripView = UIKitDemoTabStripView()
     private let pagerScrollView = UIScrollView()
     private let pagerStackView = UIStackView()
+    private var lastPagerWidth: CGFloat = 0
 
     var feedPage: UIKitDemoFeedPageViewController?
     var itemsPage: UIKitDemoItemsPageViewController?
@@ -16,10 +17,6 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
         buildHierarchy()
         configurePages()
         syncSelection(animated: false)
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
         #if DEBUG
         registerCapabilities()
         #endif
@@ -27,12 +24,13 @@ final class UIKitDemoViewController: UIViewController, UIScrollViewDelegate {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if pagerScrollView.bounds.width > 0 {
-            let index = CGFloat(UIKitDemoTab.allCases.firstIndex(of: store.selectedTab) ?? 0)
-            let targetOffset = CGPoint(x: index * pagerScrollView.bounds.width, y: 0)
-            if pagerScrollView.contentOffset.x != targetOffset.x {
-                pagerScrollView.setContentOffset(targetOffset, animated: false)
-            }
+        let width = pagerScrollView.bounds.width
+        guard width > 0, width != lastPagerWidth else { return }
+        lastPagerWidth = width
+        let index = CGFloat(UIKitDemoTab.allCases.firstIndex(of: store.selectedTab) ?? 0)
+        let targetOffset = CGPoint(x: index * width, y: 0)
+        if pagerScrollView.contentOffset.x != targetOffset.x {
+            pagerScrollView.setContentOffset(targetOffset, animated: false)
         }
     }
 
