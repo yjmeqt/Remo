@@ -5,3 +5,13 @@ echo "==> Running cargo fmt --check"
 cargo fmt --all --check 2>&1
 echo "==> Running cargo clippy"
 cargo clippy --workspace -- -D warnings 2>&1
+
+# Run ruff only when the remo-tart CLI or Tart config changes.
+changed_python=$(git diff --cached --name-only --diff-filter=ACMR \
+    -- 'tools/remo-tart/**' '.tart/**' || true)
+if [[ -n "${changed_python}" ]]; then
+    echo "==> Running ruff check (remo-tart)"
+    (cd tools/remo-tart && uv run --frozen ruff check .)
+    echo "==> Running ruff format --check (remo-tart)"
+    (cd tools/remo-tart && uv run --frozen ruff format --check .)
+fi
