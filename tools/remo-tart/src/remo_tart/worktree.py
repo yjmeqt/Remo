@@ -8,8 +8,9 @@ and the SSH config updated.  Ported from:
 
 from __future__ import annotations
 
+import shlex
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from remo_tart import launchd, ssh, vm
@@ -46,8 +47,9 @@ _WAIT_ATTEMPTS = 90  # maximum polling attempts (~3 minutes total)
 
 @dataclass(frozen=True)
 class AttachOutcome:
-    actions: list[Action]
-    manifest: list[MountEntry] = field(default_factory=list)
+    actions: tuple[Action, ...]
+    manifest: tuple[MountEntry, ...]
+    primary: MountEntry
 
 
 def ensure_attached(
@@ -107,7 +109,11 @@ def ensure_attached(
 
     # Step 6: Return outcome with the final manifest.
     final_manifest = manifest_read(manifest_path)
-    return AttachOutcome(actions=actions, manifest=final_manifest)
+    return AttachOutcome(
+        actions=tuple(actions),
+        manifest=tuple(final_manifest),
+        primary=primary_entry,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -159,12 +165,20 @@ def _action_create(
 ) -> None:
     """Create VM from base image, configure resources, and start it."""
     name = project.vm.name
+    label_str = launchd.label(name)
+
+    # Truncate log to avoid confusion with stale output
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("")
+
+    # Remove any stale launchd registration for this label to avoid submit failure
+    launchd.remove(label_str)
+
     vm.create(name, project.vm.base_image)
     vm.set_resources(name, project.vm.cpu, project.vm.memory_gb)
     tart_args = vm.build_run_args(name, project.vm.network, mounts)
-    label_str = launchd.label(name)
     launchd.submit(label_str, tart_args, log_path)
-    _wait_for_running(name)
+    _wait_for_guest_exec(name)
 
 
 def _action_update_mount_and_restart(
@@ -177,9 +191,14 @@ def _action_update_mount_and_restart(
     label_str = launchd.label(name)
     launchd.remove(label_str)
     _wait_for_stopped(name)
+    # Also wait for launchctl to actually drop the label, to avoid submit conflict
+    for _ in range(30):
+        if not launchd.job_present(label_str):
+            break
+        time.sleep(1)
     tart_args = vm.build_run_args(name, project.vm.network, mounts)
     launchd.submit(label_str, tart_args, log_path)
-    _wait_for_running(name)
+    _wait_for_guest_exec(name)
 
 
 def _action_start(
@@ -190,9 +209,17 @@ def _action_start(
     """Submit the VM to launchd and wait for it to be running."""
     name = project.vm.name
     label_str = launchd.label(name)
+
+    # Truncate log to avoid confusion with stale output
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("")
+
+    # Remove any stale launchd registration for this label to avoid submit failure
+    launchd.remove(label_str)
+
     tart_args = vm.build_run_args(name, project.vm.network, mounts)
     launchd.submit(label_str, tart_args, log_path)
-    _wait_for_running(name)
+    _wait_for_guest_exec(name)
 
 
 def _action_attach_mount_and_start(
@@ -201,7 +228,19 @@ def _action_attach_mount_and_start(
     log_path: Path,
 ) -> None:
     """Mount is already upserted before state read; just submit and wait."""
-    _action_start(project, mounts, log_path)
+    name = project.vm.name
+    label_str = launchd.label(name)
+
+    # Truncate log to avoid confusion with stale output
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("")
+
+    # Remove any stale launchd registration for this label to avoid submit failure
+    launchd.remove(label_str)
+
+    tart_args = vm.build_run_args(name, project.vm.network, mounts)
+    launchd.submit(label_str, tart_args, log_path)
+    _wait_for_guest_exec(name)
 
 
 def _action_nothing(project: ProjectConfig) -> None:
@@ -211,6 +250,17 @@ def _action_nothing(project: ProjectConfig) -> None:
     console.print(
         f"[dim]VM '{project.vm.name}' is already running with the correct mount. "
         "Nothing to do.[/dim]"
+    )
+
+
+def _build_inject_command(pub: str) -> str:
+    """Build a shell command to idempotently inject a public key into authorized_keys."""
+    quoted_pub = shlex.quote(pub)
+    return (
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
+        f"grep -Fqx -- {quoted_pub} ~/.ssh/authorized_keys 2>/dev/null || "
+        f"printf '%s\\n' {quoted_pub} >> ~/.ssh/authorized_keys && "
+        "chmod 600 ~/.ssh/authorized_keys"
     )
 
 
@@ -230,14 +280,15 @@ def _configure_ssh(project: ProjectConfig, key_path: Path) -> None:
     user_config = user_ssh_config_path()
     ssh.ensure_include_in_user_config(user_config, include_path)
 
-    # 4. Inject the public key into the guest's authorized_keys.
-    pub_key = ssh.public_key(key_path)
-    inject_cmd = (
-        "mkdir -p ~/.ssh && "
-        f"echo '{pub_key}' >> ~/.ssh/authorized_keys && "
-        "chmod 600 ~/.ssh/authorized_keys"
-    )
-    vm.exec_capture(name, ["sh", "-c", inject_cmd])
+    # 4. Inject the public key into the guest's authorized_keys (idempotent).
+    pub = ssh.public_key(key_path)
+    inject_cmd = _build_inject_command(pub)
+    result = vm.exec_capture(name, ["sh", "-c", inject_cmd])
+    if result.returncode != 0:
+        raise RemoTartError(
+            f"failed to install ssh public key into guest (exit {result.returncode})",
+            hint=f"check {vm_log_path(name)} and ensure the VM is fully booted",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -245,15 +296,24 @@ def _configure_ssh(project: ProjectConfig, key_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _wait_for_running(name: str) -> None:
-    """Poll until the VM is running, or raise RemoTartError on timeout."""
-    for _ in range(_WAIT_ATTEMPTS):
-        if vm.is_running(name):
+def _wait_for_guest_exec(vm_name: str, *, attempts: int = 90, interval: float = 2.0) -> None:
+    """Poll `tart exec true` until success. Raises RemoTartError on timeout.
+
+    This is stricter than `vm.is_running` — it waits for the guest agent to
+    respond, which is what downstream SSH key injection actually needs.
+    """
+    for _ in range(attempts):
+        # Quick readiness check — `tart exec <name> -- /usr/bin/true`
+        if not vm.is_running(vm_name):
+            time.sleep(interval)
+            continue
+        result = vm.exec_capture(vm_name, ["/usr/bin/true"])
+        if result.returncode == 0:
             return
-        time.sleep(_WAIT_INTERVAL)
+        time.sleep(interval)
     raise RemoTartError(
-        f"timeout waiting for VM '{name}' to start",
-        hint=f"check ~/.config/remo/tart/{name}.log",
+        f"timeout waiting for VM '{vm_name}' to be ready for exec",
+        hint=f"check {vm_log_path(vm_name)}",
     )
 
 
@@ -265,5 +325,5 @@ def _wait_for_stopped(name: str) -> None:
         time.sleep(_WAIT_INTERVAL)
     raise RemoTartError(
         f"timeout waiting for VM '{name}' to stop",
-        hint=f"check ~/.config/remo/tart/{name}.log",
+        hint=f"check {vm_log_path(name)}",
     )
