@@ -39,8 +39,16 @@ def test_managed_block_contains_required_fields() -> None:
 
 def test_block_marker_pair() -> None:
     begin, end = block_marker_pair("remo-dev")
-    assert begin.startswith("# >>>") and "remo-dev" in begin  # noqa: PT018
-    assert end.startswith("# <<<") and "remo-dev" in end  # noqa: PT018
+    assert begin.startswith("# >>>")
+    assert "remo-dev" in begin
+    assert end.startswith("# <<<")
+    assert "remo-dev" in end
+
+
+def test_markers_match_bash_format() -> None:
+    begin, end = block_marker_pair("remo-dev")
+    assert begin == "# >>> remo tart managed: remo-dev >>>"
+    assert end == "# <<< remo tart managed: remo-dev <<<"
 
 
 def test_upsert_managed_block_inserts_into_empty_file(tmp_path: Path) -> None:
@@ -59,9 +67,17 @@ def test_upsert_managed_block_replaces_existing(tmp_path: Path) -> None:
     text = path.read_text()
     assert "block-v1" not in text
     assert "block-v2" in text
-    # exactly one marker pair for this VM
-    assert text.count(">>>") == 1
-    assert text.count("<<<") == 1
+    # Exactly one marker pair remains — begin has 2 ">>>" tokens, end has 2 "<<<".
+    assert text.count(">>>") == 2
+    assert text.count("<<<") == 2
+
+
+def test_upsert_managed_block_is_idempotent(tmp_path: Path) -> None:
+    path = tmp_path / "tart_config"
+    upsert_managed_block(path, "remo-dev", "body\n")
+    first = path.read_text()
+    upsert_managed_block(path, "remo-dev", "body\n")
+    assert path.read_text() == first
 
 
 def test_remove_managed_block_is_noop_when_absent(tmp_path: Path) -> None:

@@ -13,10 +13,10 @@ from pathlib import Path
 # Marker templates
 # ---------------------------------------------------------------------------
 
-_BLOCK_BEGIN_TMPL = "# >>> remo tart managed: {vm_name}"
-_BLOCK_END_TMPL = "# <<< remo tart managed: {vm_name}"
-_INCLUDE_BEGIN = "# >>> remo tart include"
-_INCLUDE_END = "# <<< remo tart include"
+_BLOCK_BEGIN_TMPL = "# >>> remo tart managed: {vm_name} >>>"
+_BLOCK_END_TMPL = "# <<< remo tart managed: {vm_name} <<<"
+_INCLUDE_BEGIN = "# >>> remo tart include >>>"
+_INCLUDE_END = "# <<< remo tart include <<<"
 
 
 # ---------------------------------------------------------------------------
