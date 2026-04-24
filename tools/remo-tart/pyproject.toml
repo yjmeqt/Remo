@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-remo-tart = "remo_tart.cli:main"
+remo-tart = "remo_tart.cli:_run"
 
 [build-system]
 requires = ["hatchling"]

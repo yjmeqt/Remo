@@ -1,4 +1,6 @@
-from remo_tart.cli import main
+import sys
+
+from remo_tart.cli import _run
 
 if __name__ == "__main__":
-    main()
+    sys.exit(_run())
