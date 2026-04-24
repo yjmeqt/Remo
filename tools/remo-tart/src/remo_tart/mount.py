@@ -1,5 +1,9 @@
 """Mount manifest management, name derivation, and guest bridge script generation."""
 
+# The guest password defaults to the Cirrus Labs macOS image default ("admin").
+# Later tasks (see plan Task 8) will thread the real value from project config
+# into callers of guest_bridge_script.
+
 from __future__ import annotations
 
 import contextlib
@@ -74,6 +78,8 @@ def manifest_upsert(path: Path, entry: MountEntry) -> list[MountEntry]:
 
 def manifest_remove(path: Path, name: str) -> list[MountEntry]:
     """Remove all entries with *name*, persist, and return the new list."""
+    if not path.exists():
+        return []
     existing = manifest_read(path)
     kept = [e for e in existing if e.name != name]
     manifest_write(path, kept)
@@ -85,8 +91,10 @@ def manifest_prune_stale(path: Path) -> tuple[list[MountEntry], int]:
 
     Returns ``(kept_entries, pruned_count)``.
     """
+    if not path.exists():
+        return [], 0
     existing = manifest_read(path)
-    kept = [e for e in existing if e.host_path.exists()]
+    kept = [e for e in existing if e.host_path.is_dir()]
     pruned = len(existing) - len(kept)
     manifest_write(path, kept)
     return kept, pruned
@@ -145,7 +153,12 @@ def parse_mount_spec(project_slug: str, spec: str) -> MountEntry:
 # ---------------------------------------------------------------------------
 
 
-def guest_bridge_script(entries: list[MountEntry], git_root_name: str) -> str:
+def guest_bridge_script(
+    entries: list[MountEntry],
+    git_root_name: str,
+    *,
+    guest_password: str = "admin",
+) -> str:
     """Return a bash script that wires up ``.git`` symlinks inside the guest.
 
     For each entry in *entries* that is NOT the git-root bridge itself, the
@@ -178,7 +191,10 @@ def guest_bridge_script(entries: list[MountEntry], git_root_name: str) -> str:
             f"guest_bridge_source={_shell_quote(guest_bridge_source)}",
             f"guest_git_parent={_shell_quote(guest_git_parent)}",
             'if [[ -L "${guest_git_parent}" ]]; then',
-            f'    printf "%s\\n" admin | sudo -S rm -f {_shell_quote(guest_git_parent)}',
+            (
+                f'    printf "%s\\n" {_shell_quote(guest_password)}'
+                f" | sudo -S rm -f {_shell_quote(guest_git_parent)}"
+            ),
             "fi",
             'if [[ -e "${guest_git_parent}" && ! -d "${guest_git_parent}" ]]; then',
             '    echo "guest git parent exists and is not a directory: ${guest_git_parent}" >&2',
@@ -197,9 +213,12 @@ def guest_bridge_script(entries: list[MountEntry], git_root_name: str) -> str:
             ),
             "    exit 1",
             "fi",
-            f'printf "%s\\n" admin | sudo -S mkdir -p {_shell_quote(guest_git_parent)}',
             (
-                f'printf "%s\\n" admin | sudo -S ln -sfn'
+                f'printf "%s\\n" {_shell_quote(guest_password)}'
+                f" | sudo -S mkdir -p {_shell_quote(guest_git_parent)}"
+            ),
+            (
+                f'printf "%s\\n" {_shell_quote(guest_password)} | sudo -S ln -sfn'
                 f" {_shell_quote(guest_bridge_source)} {_shell_quote(guest_git_root)}"
             ),
             "",

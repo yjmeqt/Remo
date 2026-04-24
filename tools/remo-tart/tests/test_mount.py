@@ -146,3 +146,49 @@ def test_guest_bridge_script_contains_expected_markers() -> None:
     assert "set -euo pipefail" in script
     assert "My Shared Files/remo-git-root" in script
     assert "remo-feat" in script
+
+
+def test_guest_bridge_script_excludes_git_root_entry() -> None:
+    script = guest_bridge_script(
+        [
+            MountEntry("remo-git-root", Path("/r/.git")),
+            MountEntry("remo-feat", Path("/r")),
+        ],
+        git_root_name="remo-git-root",
+    )
+    # The git-root bridge itself must not be symlinked to its own .git subdir.
+    assert "My Shared Files/remo-git-root/.git" not in script
+    assert "My Shared Files/remo-feat/.git" in script
+
+
+def test_manifest_prune_does_not_create_missing_file(tmp_path: Path) -> None:
+    path = tmp_path / "mounts"
+    kept, pruned = manifest_prune_stale(path)
+    assert (kept, pruned) == ([], 0)
+    assert not path.exists()
+
+
+def test_manifest_remove_does_not_create_missing_file(tmp_path: Path) -> None:
+    path = tmp_path / "mounts"
+    after = manifest_remove(path, "anything")
+    assert after == []
+    assert not path.exists()
+
+
+def test_manifest_prune_treats_file_as_stale(tmp_path: Path) -> None:
+    # A "directory" that's actually a regular file should be pruned (bash -d semantics).
+    not_dir = tmp_path / "file"
+    not_dir.write_text("x")
+    live = tmp_path / "live"
+    live.mkdir()
+    path = tmp_path / "mounts"
+    manifest_write(
+        path,
+        [
+            MountEntry("live", live),
+            MountEntry("a-file", not_dir),
+        ],
+    )
+    kept, pruned = manifest_prune_stale(path)
+    assert pruned == 1
+    assert [e.name for e in kept] == ["live"]
