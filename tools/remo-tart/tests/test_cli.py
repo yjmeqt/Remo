@@ -135,3 +135,13 @@ def test_up_stops_on_use_failure(mock_dispatch: MagicMock) -> None:
     assert result.exit_code == 1
     # only use-worktree was called; connect skipped
     assert mock_dispatch.call_count == 1
+
+
+def test_run_returns_child_exit_code(
+    monkeypatch: pytest.MonkeyPatch, mock_dispatch: MagicMock
+) -> None:
+    from remo_tart.cli import _run
+
+    mock_dispatch.return_value = MagicMock(returncode=42)
+    monkeypatch.setattr("sys.argv", ["remo-tart", "status"])
+    assert _run() == 42

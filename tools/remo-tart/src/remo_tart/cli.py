@@ -72,11 +72,10 @@ def start(ctx: click.Context) -> None:
 
 @main.command()
 @click.argument("mode", type=click.Choice(["cli", "vscode", "cursor"]), default="cli")
-@click.argument("extra", nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
-def connect(ctx: click.Context, mode: str, extra: tuple[str, ...]) -> None:
+def connect(ctx: click.Context, mode: str) -> None:
     """Connect to the running VM (cli / vscode / cursor)."""
-    result = bash_dispatch("connect-dev-vm.sh", [mode, *extra])
+    result = bash_dispatch("connect-dev-vm.sh", [mode])
     ctx.exit(result.returncode)
 
 
@@ -143,7 +142,8 @@ def bootstrap(ctx: click.Context) -> None:
 
 def _run() -> int:
     try:
-        main(standalone_mode=False)
+        result = main(standalone_mode=False)
+        return int(result) if isinstance(result, int) else 0
     except RemoTartError as err:
         render_error(get_console(), err)
         return 1
@@ -153,10 +153,9 @@ def _run() -> int:
     except click.exceptions.Abort:
         return 130
     except click.exceptions.Exit as err:
-        return int(err.code) if isinstance(err.code, int) else 0
+        return err.exit_code
     except SystemExit as err:
         return int(err.code) if isinstance(err.code, int) else 0
-    return 0
 
 
 if __name__ == "__main__":
