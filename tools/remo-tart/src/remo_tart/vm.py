@@ -88,7 +88,7 @@ def ip_address(name: str) -> str | None:
 
     # Fallback: ask the guest directly
     fallback = subprocess.run(
-        ["tart", "exec", name, "--", "/usr/bin/ipconfig", "getifaddr", "en0"],
+        ["tart", "exec", name, "/usr/bin/ipconfig", "getifaddr", "en0"],
         capture_output=True,
         text=True,
         check=False,
@@ -152,9 +152,13 @@ def exec_capture(name: str, argv: list[str]) -> subprocess.CompletedProcess:  # 
 
     Returns the :class:`subprocess.CompletedProcess` without raising on
     non-zero exit codes — callers are responsible for checking ``returncode``.
+
+    Note: ``tart exec`` syntax is ``tart exec <vm> <cmd> [args...]`` —
+    there is NO ``--`` separator (tart treats ``--`` as a command name and
+    fails with ``executable file not found``).
     """
     return subprocess.run(
-        ["tart", "exec", name, "--", *argv],
+        ["tart", "exec", name, *argv],
         capture_output=True,
         text=True,
         check=False,
@@ -164,10 +168,11 @@ def exec_capture(name: str, argv: list[str]) -> subprocess.CompletedProcess:  # 
 def exec_interactive(name: str, argv: list[str]) -> int:
     """Run *argv* inside *name* with an inherited tty.
 
-    Returns the exit code of the remote command.
+    Returns the exit code of the remote command.  See :func:`exec_capture`
+    for the note about ``--``.
     """
     result = subprocess.run(
-        ["tart", "exec", name, "--", *argv],
+        ["tart", "exec", name, *argv],
         check=False,
     )
     return result.returncode
@@ -178,11 +183,21 @@ def exec_interactive(name: str, argv: list[str]) -> int:
 # ---------------------------------------------------------------------------
 
 
-def build_run_args(name: str, network: str, mounts: list[MountEntry]) -> list[str]:
+def build_run_args(
+    name: str,
+    network: str,
+    mounts: list[MountEntry],
+    *,
+    headless: bool = True,
+) -> list[str]:
     """Return the ``tart run`` argv list for *name* (without the ``tart`` prefix).
 
     This is a **pure function** — it never shells out.  The launchd submitter
     calls it to compose the run command before handing it to ``launchctl``.
+
+    By default the VM runs **headless** (``--no-graphics``); set
+    ``headless=False`` to open a UI window (useful for debugging boot, GUI
+    work, or running an installer that needs the display).
 
     Network strings:
     - ``"shared"``        → ``["--net-shared"]``
@@ -190,9 +205,13 @@ def build_run_args(name: str, network: str, mounts: list[MountEntry]) -> list[st
     - ``"bridged:<iface>"`` → ``["--net-bridged", "<iface>"]``
 
     Each :class:`~remo_tart.mount.MountEntry` adds
-    ``["--dir", "<name>:<host_path>:rw"]``.
+    ``["--dir", "<name>:<host_path>"]``.  Tart's ``--dir`` options are
+    ``ro`` or ``tag=<TAG>`` only — there is no ``rw`` option (rw is the default).
     """
     args: list[str] = ["run", name]
+
+    if headless:
+        args.append("--no-graphics")
 
     # Network
     if network == "shared":
@@ -205,6 +224,6 @@ def build_run_args(name: str, network: str, mounts: list[MountEntry]) -> list[st
 
     # Mounts
     for entry in mounts:
-        args += ["--dir", f"{entry.name}:{entry.host_path}:rw"]
+        args += ["--dir", f"{entry.name}:{entry.host_path}"]
 
     return args

@@ -87,6 +87,25 @@ def test_build_run_args_softnet() -> None:
     assert "--net-softnet" in args
 
 
+def test_build_run_args_does_not_emit_rw_option() -> None:
+    """Tart's --dir options are ro/tag=, NOT rw. Adding :rw makes Tart reject
+    the directory share with VZErrorDomain Code=2."""
+    mounts = [MountEntry("remo", Path("/r"))]
+    args = vm.build_run_args("remo-dev", network="shared", mounts=mounts)
+    assert "remo:/r" in args
+    assert not any(":rw" in a for a in args)
+
+
+def test_build_run_args_headless_by_default() -> None:
+    args = vm.build_run_args("remo-dev", network="shared", mounts=[])
+    assert "--no-graphics" in args
+
+
+def test_build_run_args_with_display_omits_no_graphics() -> None:
+    args = vm.build_run_args("remo-dev", network="shared", mounts=[], headless=False)
+    assert "--no-graphics" not in args
+
+
 @patch("subprocess.run")
 def test_create_invokes_tart_clone(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=0, stdout="", stderr="")
@@ -125,6 +144,24 @@ def test_exec_capture_returns_completed_process(run: MagicMock) -> None:
     (called_argv,) = run.call_args[0]
     assert called_argv[0:3] == ["tart", "exec", "remo-dev"]
     assert called_argv[-2:] == ["echo", "hello"]
+
+
+@patch("subprocess.run")
+def test_exec_capture_does_not_pass_double_dash_separator(run: MagicMock) -> None:
+    """``tart exec`` does not accept ``--`` as a separator — it treats ``--``
+    as a command name and fails with ``executable file not found``."""
+    run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    vm.exec_capture("remo-dev", ["echo", "hi"])
+    (called_argv,) = run.call_args[0]
+    assert "--" not in called_argv
+
+
+@patch("subprocess.run")
+def test_exec_interactive_does_not_pass_double_dash_separator(run: MagicMock) -> None:
+    run.return_value = MagicMock(returncode=0)
+    vm.exec_interactive("remo-dev", ["sh"])
+    (called_argv,) = run.call_args[0]
+    assert "--" not in called_argv
 
 
 @patch("subprocess.run")

@@ -20,3 +20,13 @@ def render_error(console: Console, err: RemoTartError) -> None:
     console.print(f"[red]error:[/red] {err}")
     if err.hint:
         console.print(f"[dim]hint:[/dim] {err.hint}")
+
+
+def step(msg: str) -> None:
+    """Print a progress step. Use for long-running orchestrator phases."""
+    get_console().print(f"[cyan]→[/cyan] {msg}")
+
+
+def done(msg: str) -> None:
+    """Print a completion step."""
+    get_console().print(f"[green]✓[/green] {msg}")
