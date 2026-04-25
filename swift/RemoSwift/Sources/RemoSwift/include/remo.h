@@ -20,13 +20,23 @@ void remo_stop(void);
 /// Returns: a null-terminated JSON string allocated with strdup().
 typedef char* (*remo_capability_callback)(void* context, const char* params_json);
 
+/// Optional destroy callback paired with the context pointer.
+///
+/// Invoked exactly once when the registration ends — whether by unregister,
+/// by replacement (re-registering the same name), or by the registry itself
+/// being dropped. Use this to balance any retain performed on `context` at
+/// registration (e.g. Unmanaged.passRetained on Swift).
+typedef void (*remo_capability_destroy)(void* context);
+
 /// Register a capability handler.
 /// - name: null-terminated capability name
 /// - context: opaque pointer passed to callback
 /// - callback: function pointer invoked when the capability is called
+/// - destroy: optional cleanup invoked when the registration ends (may be NULL)
 void remo_register_capability(const char* name,
                               void* context,
-                              remo_capability_callback callback);
+                              remo_capability_callback callback,
+                              remo_capability_destroy destroy);
 
 /// Unregister a capability by name.
 /// Returns true if the capability was found and removed.

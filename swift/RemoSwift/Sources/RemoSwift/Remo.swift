@@ -110,7 +110,7 @@ public final class Remo {
         let context = Unmanaged.passRetained(handlerBox).toOpaque()
 
         name.withCString { namePtr in
-            remo_register_capability(namePtr, context, swiftCapabilityTrampoline)
+            remo_register_capability(namePtr, context, swiftCapabilityTrampoline, swiftCapabilityDestroy)
         }
         #else
         // Host-side package builds only need the macro-facing API surface to exist.
@@ -212,6 +212,15 @@ private final class HandlerBox {
     init(handler: @Sendable @escaping ([String: Any]) -> [String: Any]) {
         self.handler = handler
     }
+}
+
+/// Balances the `passRetained` performed in `register(_:handler:)` — invoked
+/// by the Rust side when the registration ends (unregister, replacement, or
+/// registry drop). Without this, the `HandlerBox` would leak for the lifetime
+/// of the process.
+private let swiftCapabilityDestroy: remo_capability_destroy = { context in
+    guard let context = context else { return }
+    Unmanaged<HandlerBox>.fromOpaque(context).release()
 }
 
 /// C-compatible trampoline that bridges Rust -> Swift handler calls.

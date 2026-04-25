@@ -411,7 +411,7 @@ extension UIKitDemoViewController {
 
                 #remoCap(GridFeedReset.self) { _ in
                     handleGridCapability {
-                        try bridge.run { controller in
+                        bridge.run { controller in
                             controller.handleReset()
                         }
                     }
@@ -435,7 +435,7 @@ extension UIKitDemoViewController {
 
                 #remoCap(GridVisible.self) { _ in
                     handleGridCapability {
-                        try bridge.run { controller in
+                        bridge.run { controller in
                             controller.handleVisible()
                         }
                     }

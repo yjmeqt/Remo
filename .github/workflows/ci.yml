@@ -70,6 +70,17 @@ jobs:
             xcode-e2e-
       - name: Boot simulator
         run: xcrun simctl boot 'iPhone 17' 2>/dev/null || true
+      - name: Build iOS SDK (simulator)
+        run: ./build-ios.sh sim
+      - name: Run iOS unit tests (RemoExampleFeatureTests)
+        working-directory: examples/ios
+        run: |
+          xcodebuild \
+            -workspace RemoExample.xcworkspace \
+            -scheme RemoExample \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -only-testing:RemoExampleFeatureTests \
+            test
       - name: Run E2E tests
         run: ./scripts/e2e-test.sh --screenshots --record
       - name: Upload artifacts
