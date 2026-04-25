@@ -70,15 +70,8 @@ def ensure_attached(
     log_path = vm_log_path(vm_name)
     key_path = ssh_key_path(vm_name)
 
-    # Step 1: Snapshot pre-upsert state, prune stale entries, then upsert the
-    # primary + git-root bridge entries.
-    pre_upsert = manifest_read(manifest_path)
-    worktree_already_present = any(
-        e.host_path.resolve() == worktree_host_path.resolve() for e in pre_upsert
-    )
-
+    # Step 1: Prune stale entries, then upsert the primary + git-root bridge.
     manifest_prune_stale(manifest_path)
-    target = _target_manifest(project, repo_root, worktree_host_path)
 
     primary_entry = MountEntry(
         name=mount_name_for_path(project.slug, worktree_host_path),
@@ -88,16 +81,19 @@ def ensure_attached(
     manifest_upsert(manifest_path, primary_entry)
     manifest_upsert(manifest_path, bridge_entry)
 
-    # Step 2: Read VM state.  Pass worktree_already_present so _read_state can
-    # use the pre-upsert view when deciding mount_matches (the running VM loaded
-    # the OLD manifest at boot — a restart is needed if the mount wasn't there).
-    vm_state = _read_state(project, manifest_path, worktree_host_path, worktree_already_present)
+    # Step 2: Read VM state.  ``mount_matches`` is computed against the
+    # *running* VM's actual mounts (queried via tart exec), not the on-disk
+    # manifest — the manifest can drift ahead of the running VM if mounts
+    # were upserted between boots.
+    vm_state = _read_state(project, manifest_path, worktree_host_path)
 
     # Step 3: Decide actions from the state machine.
     actions = decide(vm_state)
 
-    # Step 4: Dispatch.
-    mounts = target
+    # Step 4: Dispatch with the FULL manifest (not just primary + bridge), so a
+    # restart from worktree A keeps worktree B's mount alive too. Otherwise
+    # every cross-worktree `up` silently drops all other worktree shares.
+    mounts = manifest_read(manifest_path)
     for action in actions:
         if action == Action.CREATE:
             _action_create(project, mounts, log_path, key_path, headless=headless)
@@ -132,25 +128,36 @@ def ensure_attached(
 # ---------------------------------------------------------------------------
 
 
+def _running_mount_names(vm_name: str) -> set[str]:
+    """Return the directory-share names actually mounted in the running guest.
+
+    Empty set if the guest is unreachable or the shared-files dir is empty.
+    This is **ground truth** — the on-disk manifest can drift ahead of what
+    the currently-running VM actually has loaded.
+    """
+    result = vm.exec_capture(vm_name, ["ls", "/Volumes/My Shared Files/"])
+    if result.returncode != 0:
+        return set()
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
 def _read_state(
     project: ProjectConfig,
     manifest_path: Path,
     worktree: Path,
-    worktree_already_present: bool = False,
 ) -> VmState:
-    """Read current VM and manifest state.
-
-    ``worktree_already_present`` reflects whether the worktree path was in the
-    manifest BEFORE the current upsert.  A running VM loaded the old manifest at
-    boot, so ``mount_matches`` is True only when the path was already present —
-    meaning no restart is required to expose the mount inside the guest.
+    """Read current VM state. ``mount_matches`` reflects whether the running
+    guest actually has the worktree's mount loaded — queried via ``tart exec``,
+    not the on-disk manifest, because the manifest can drift ahead of the VM.
     """
     name = project.vm.name
     exists = vm.exists(name)
     running = exists and vm.is_running(name)
-    # A running VM has the OLD manifest loaded; we need a restart only when the
-    # worktree was not already mounted at boot time.
-    mount_matches = running and worktree_already_present
+    if running:
+        target_name = mount_name_for_path(project.slug, worktree)
+        mount_matches = target_name in _running_mount_names(name)
+    else:
+        mount_matches = False
     return VmState(exists=exists, running=running, mount_matches=mount_matches)
 
 
