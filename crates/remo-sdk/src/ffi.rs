@@ -192,17 +192,36 @@ pub extern "C" fn remo_get_port() -> u16 {
 pub type CapabilityCallback =
     unsafe extern "C" fn(context: *mut std::ffi::c_void, params_json: *const c_char) -> *mut c_char;
 
+/// Optional destroy callback invoked when the registration ends.
+///
+/// Called exactly once per `remo_register_capability` call: when the
+/// capability is unregistered, replaced by another registration of the same
+/// name, or the registry entry is otherwise dropped. Use this to balance any
+/// retain performed on `context` at registration time (e.g.
+/// `Unmanaged.passRetained`).
+///
+/// May be `NULL` if the context does not require cleanup.
+pub type CapabilityDestroy = unsafe extern "C" fn(context: *mut std::ffi::c_void);
+
 /// Register a capability handler from Swift.
+///
+/// `destroy` (if non-null) is invoked exactly once when the registration ends —
+/// on unregister, on replacement by another registration of the same name, or
+/// when the handler is otherwise dropped from the registry. After that call the
+/// caller may release any resources owned by `context`.
 ///
 /// # Safety
 /// - `name` must be a valid null-terminated C string.
-/// - `context` must remain valid for the lifetime of the registration.
+/// - `context` must remain valid until `destroy` is invoked (or, if `destroy`
+///   is null, for the lifetime of the process).
 /// - `callback` must be a valid, thread-safe function pointer.
+/// - `destroy`, if non-null, must be a valid, thread-safe function pointer.
 #[no_mangle]
 pub unsafe extern "C" fn remo_register_capability(
     name: *const c_char,
     context: *mut std::ffi::c_void,
     callback: CapabilityCallback,
+    destroy: Option<CapabilityDestroy>,
 ) {
     let name = CStr::from_ptr(name).to_string_lossy().into_owned();
 
@@ -210,6 +229,7 @@ pub unsafe extern "C" fn remo_register_capability(
     let handle = CallbackHandle {
         ctx: SendPtr(context),
         cb: callback,
+        destroy,
     };
     // Prevent raw pointer parameters from being captured by the closure below.
     let _ = context;
@@ -294,9 +314,14 @@ unsafe impl Send for SendPtr {}
 unsafe impl Sync for SendPtr {}
 
 /// Wraps the FFI callback context so the closure is Send + Sync.
+///
+/// The optional `destroy` callback is invoked from `Drop` so the context is
+/// released exactly when the registry entry is removed — whether by an
+/// explicit unregister, by replacement, or by dropping the registry itself.
 struct CallbackHandle {
     ctx: SendPtr,
     cb: CapabilityCallback,
+    destroy: Option<CapabilityDestroy>,
 }
 // SAFETY: CallbackHandle's fields (SendPtr + extern "C" fn) are thread-safe per Swift contract.
 unsafe impl Send for CallbackHandle {}
@@ -313,7 +338,137 @@ impl CallbackHandle {
     }
 }
 
+impl Drop for CallbackHandle {
+    fn drop(&mut self) {
+        if let Some(destroy) = self.destroy {
+            // SAFETY: `destroy` was supplied by the FFI caller alongside `ctx`
+            // and is contracted to be safe to call exactly once with that ctx.
+            unsafe { destroy(self.ctx.0) };
+        }
+    }
+}
+
 extern "C" {
     #[link_name = "free"]
     fn libc_free(ptr: *mut std::ffi::c_void);
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests for the FFI capability lifecycle — specifically that the
+    //! `destroy` callback supplied alongside the context pointer is invoked
+    //! exactly once per registration, regardless of how the registration ends
+    //! (explicit unregister or replacement by another registration of the
+    //! same name).
+    //!
+    //! These tests exercise `CallbackHandle` through `CapabilityRegistry`
+    //! directly rather than the global FFI entry points, since the latter
+    //! share process-wide state.
+    use super::*;
+    use crate::registry::CapabilityRegistry;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// `context` argument is the pointer to a leaked `Arc<AtomicUsize>` —
+    /// reclaim it and bump the destroy count.
+    unsafe extern "C" fn destroy_counter(context: *mut std::ffi::c_void) {
+        let counter = Arc::from_raw(context as *const AtomicUsize);
+        counter.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn noop_callback(
+        _context: *mut std::ffi::c_void,
+        _params_json: *const c_char,
+    ) -> *mut c_char {
+        std::ptr::null_mut()
+    }
+
+    /// Register a capability whose `destroy` increments `counter` when fired.
+    /// Mirrors the bookkeeping `remo_register_capability` does internally so
+    /// these tests don't depend on the global FFI registry.
+    fn register_with_destroy(reg: &CapabilityRegistry, name: &str, counter: Arc<AtomicUsize>) {
+        let context = Arc::into_raw(counter) as *mut std::ffi::c_void;
+        let handle = CallbackHandle {
+            ctx: SendPtr(context),
+            cb: noop_callback,
+            destroy: Some(destroy_counter),
+        };
+        reg.register_sync(name.to_string(), move |_params| {
+            let _ = &handle;
+            Ok(Value::Null)
+        });
+    }
+
+    #[tokio::test]
+    async fn destroy_fires_on_unregister() {
+        let reg = CapabilityRegistry::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        register_with_destroy(&reg, "cap", Arc::clone(&counter));
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "destroy must not fire on register"
+        );
+
+        assert!(reg.unregister("cap"));
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "destroy must fire exactly once on unregister"
+        );
+    }
+
+    #[tokio::test]
+    async fn destroy_fires_on_replacement() {
+        let reg = CapabilityRegistry::new();
+        let first = Arc::new(AtomicUsize::new(0));
+        let second = Arc::new(AtomicUsize::new(0));
+
+        register_with_destroy(&reg, "cap", Arc::clone(&first));
+        register_with_destroy(&reg, "cap", Arc::clone(&second));
+
+        assert_eq!(
+            first.load(Ordering::SeqCst),
+            1,
+            "old context must be destroyed when replaced"
+        );
+        assert_eq!(
+            second.load(Ordering::SeqCst),
+            0,
+            "new context must still be alive"
+        );
+
+        assert!(reg.unregister("cap"));
+        assert_eq!(
+            second.load(Ordering::SeqCst),
+            1,
+            "new context must be destroyed on unregister"
+        );
+    }
+
+    #[tokio::test]
+    async fn destroy_fires_on_registry_drop() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        {
+            let reg = CapabilityRegistry::new();
+            register_with_destroy(&reg, "cap", Arc::clone(&counter));
+            assert_eq!(counter.load(Ordering::SeqCst), 0);
+        }
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "destroy must fire when registry is dropped"
+        );
+    }
+
+    #[tokio::test]
+    async fn null_destroy_is_safe() {
+        let handle = CallbackHandle {
+            ctx: SendPtr(std::ptr::null_mut()),
+            cb: noop_callback,
+            destroy: None,
+        };
+        drop(handle);
+    }
 }
