@@ -109,3 +109,21 @@ def test_load_prefers_toml_when_both_present(tmp_path: Path) -> None:
     (tmp_path / ".tart" / "project.sh").write_text("# legacy")
     cfg = load(tmp_path)
     assert cfg.slug == "remo"
+
+
+def test_vm_config_defaults_guest_user(tmp_path: Path) -> None:
+    _write_toml(tmp_path, _valid_toml())
+    cfg = load(tmp_path)
+    assert cfg.vm.guest_user == "admin"
+    assert cfg.vm.guest_password == "admin"
+
+
+def test_vm_config_overrides_guest_credentials(tmp_path: Path) -> None:
+    toml = _valid_toml().replace(
+        "[vm]",
+        '[vm]\nguest_user = "developer"\nguest_password = "s3cret"',
+    )
+    _write_toml(tmp_path, toml)
+    cfg = load(tmp_path)
+    assert cfg.vm.guest_user == "developer"
+    assert cfg.vm.guest_password == "s3cret"

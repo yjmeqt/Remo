@@ -7,6 +7,8 @@ base_image = "ghcr.io/cirruslabs/macos-tahoe-xcode:26"
 cpu = 6
 memory_gb = 12
 network = "bridged:en0"
+guest_user = "admin"
+guest_password = "admin"
 
 [packs]
 enabled = ["shell", "ios", "rust", "node", "agents"]
