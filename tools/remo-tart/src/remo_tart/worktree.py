@@ -33,9 +33,6 @@ from remo_tart.paths import (
 )
 from remo_tart.state import Action, VmState, decide
 
-# TODO(pr3): move to config
-_GUEST_USER = "admin"
-
 _WAIT_INTERVAL = 2  # seconds between polls
 _WAIT_ATTEMPTS = 90  # maximum polling attempts (~3 minutes total)
 
@@ -272,7 +269,7 @@ def _configure_ssh(project: ProjectConfig, key_path: Path) -> None:
     ssh.generate_keypair(key_path)
 
     # 2. Build and upsert the managed SSH config block.
-    block = ssh.managed_block(name, _GUEST_USER, key_path)
+    block = ssh.managed_block(name, project.vm.guest_user, key_path)
     include_path = ssh_include_path()
     ssh.upsert_managed_block(include_path, name, block)
 

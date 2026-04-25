@@ -27,10 +27,6 @@ from remo_tart.paths import (
     vm_log_path,
 )
 
-# TODO(pr3): move to config
-_GUEST_USER = "admin"
-
-
 # ---------------------------------------------------------------------------
 # _load_cfg helper
 # ---------------------------------------------------------------------------
@@ -114,11 +110,11 @@ def up(ctx: click.Context, mode: str) -> None:
     outcome = worktree.ensure_attached(repo, project, cwd)
     name = project.vm.name
     if mode == "cli":
-        code = _connect.connect_cli(name, _GUEST_USER)
+        code = _connect.connect_cli(name, project.vm.guest_user)
     elif mode == "vscode":
-        code = _connect.connect_vscode(name, _GUEST_USER, outcome.primary)
+        code = _connect.connect_vscode(name, project.vm.guest_user, outcome.primary)
     else:  # cursor
-        code = _connect.connect_cursor(name, _GUEST_USER, outcome.primary)
+        code = _connect.connect_cursor(name, project.vm.guest_user, outcome.primary)
     ctx.exit(code)
 
 
@@ -179,11 +175,11 @@ def connect(ctx: click.Context, mode: str) -> None:
     entries = mount.manifest_read(manifest_path)
     primary = _resolve_primary_mount(entries, Path.cwd())
     if mode == "cli":
-        code = _connect.connect_cli(name, _GUEST_USER)
+        code = _connect.connect_cli(name, project.vm.guest_user)
     elif mode == "vscode":
-        code = _connect.connect_vscode(name, _GUEST_USER, primary)
+        code = _connect.connect_vscode(name, project.vm.guest_user, primary)
     else:  # cursor
-        code = _connect.connect_cursor(name, _GUEST_USER, primary)
+        code = _connect.connect_cursor(name, project.vm.guest_user, primary)
     ctx.exit(code)
 
 
@@ -286,7 +282,7 @@ def bootstrap(ctx: click.Context) -> None:
     cwd = Path.cwd()
     worktree.ensure_attached(repo, project, cwd)
     name = project.vm.name
-    code = _connect.connect_cli(name, _GUEST_USER)
+    code = _connect.connect_cli(name, project.vm.guest_user)
     ctx.exit(code)
 
 
