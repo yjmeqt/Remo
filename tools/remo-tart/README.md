@@ -23,7 +23,9 @@ uv run ruff format .
 uv run pytest
 ```
 
-## Scope (PR 1)
+## Architecture
 
-This CLI currently dispatches every subcommand to the corresponding
-`scripts/tart/*.sh`. Core logic will migrate to Python in PR 2.
+See [docs/tart-dev-vm.md](../../docs/tart-dev-vm.md) for module-level
+architecture and the state machine. See
+[docs/tart-development-guide.md](../../docs/tart-development-guide.md) for the
+day-to-day workflow.

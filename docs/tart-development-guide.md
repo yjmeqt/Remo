@@ -8,17 +8,14 @@ Use this document for:
 - first-time setup after cloning Remo
 - attaching each new worktree to the shared `remo-dev` VM
 - connecting through CLI, Cursor, or VS Code
-- cleaning only the current worktree’s generated Tart caches
+- cleaning a worktree's mount when it's no longer needed
 - checking `status` / `doctor` before debugging a broken workflow
 
-For lower-level script behavior and troubleshooting internals, see
-[docs/tart-dev-vm.md](/Users/yi.jiang/Developer/Remo/.worktrees/tart-vm/docs/tart-dev-vm.md).
+For lower-level reference (state machine, mount manifest format, troubleshooting),
+see [docs/tart-dev-vm.md](./tart-dev-vm.md).
 
-For the latest verified runtime evidence and implementation history, see
-[docs/tart-dev-vm-handoff.md](/Users/yi.jiang/Developer/Remo/.worktrees/tart-vm/docs/tart-dev-vm-handoff.md).
-
-For agents working on the Remo repository itself, the matching workflow skill is
-[skills/tart-dev-management/SKILL.md](/Users/yi.jiang/Developer/Remo/.worktrees/tart-vm/skills/tart-dev-management/SKILL.md).
+For agents working on the Remo repository itself, the matching workflow skill
+is [skills/tart-dev-management/SKILL.md](../skills/tart-dev-management/SKILL.md).
 
 ## Why Remo Uses Tart For Contributor Development
 
@@ -36,10 +33,12 @@ own generated state under `.tart/`.
 
 Tracked Tart configuration for this repository lives in:
 
-- `.tart/project.sh`
-- `.tart/packs/*.sh`
+- `.tart/project.toml` — declarative project config (VM name, packs, scripts)
+- `.tart/provision.sh` — shell run on the guest after pack ensures
+- `.tart/verify-worktree.sh` — shell run to verify a worktree builds
+- `.tart/packs/*.sh` — user-extensible pack scripts run on the guest
 
-Generated per-worktree state lives in directories such as:
+Generated per-worktree state lives under `.tart/`:
 
 - `.tart/DerivedData`
 - `.tart/cargo-target`
@@ -55,174 +54,208 @@ Remo-specific host state for this workflow lives in:
 
 - `~/.config/remo/tart/`
 
-## First-Time Setup After Clone
+## Install the CLI
 
-Run this once after cloning Remo:
+The Tart workflow is driven by the `remo-tart` Python CLI under
+`tools/remo-tart/`. Install it editable so source edits take effect immediately:
+
+```bash
+brew install cirruslabs/cli/tart
+brew install astral-sh/uv/uv
+uv tool install --editable tools/remo-tart
+remo-tart --help
+```
+
+If you have multiple worktrees, pick one as your "CLI dev" worktree — `uv tool
+install --editable` points at one path, and other worktrees consume that same
+installed binary.
+
+## First-Time Setup After Clone
 
 ```bash
 git clone https://github.com/yjmeqt/Remo.git
 cd Remo
 make setup
-brew install cirruslabs/cli/tart
-scripts/tart/bootstrap-dev-vm.sh
+uv tool install --editable tools/remo-tart
+remo-tart up
 ```
 
-What `bootstrap-dev-vm.sh` does:
-
-1. checks that `tart` exists on the host
-2. creates or reuses the shared `remo-dev` VM
-3. mounts the current worktree into the guest
-4. provisions the guest using the current `.tart/project.sh` and enabled packs
-5. runs the default worktree verification path
-6. prints the next-step connect commands
+`remo-tart up` is idempotent: it creates the VM if missing, attaches the current
+worktree, boots, provisions, and drops you into a CLI shell. Subsequent runs
+from the same worktree reuse the running VM with no reboot.
 
 Useful variants:
 
 ```bash
-scripts/tart/bootstrap-dev-vm.sh --recreate
-scripts/tart/bootstrap-dev-vm.sh --no-verify
+remo-tart up vscode    # attach + open VS Code Remote SSH
+remo-tart up cursor    # attach + open Cursor Remote SSH
+remo-tart bootstrap    # explicit first-time setup (alias of up cli)
 ```
 
-Use `--recreate` only when you intentionally want a fresh VM from the base
-image. Use `--no-verify` only when you want to separate VM creation from
-worktree verification.
+## Attaching a New Worktree
 
-## Create And Attach A New Worktree
-
-Remo uses one shared VM, not one VM per worktree.
-
-For each new worktree:
+When you create a new git worktree:
 
 ```bash
-git worktree add .worktrees/my-branch -b my-branch
-cd .worktrees/my-branch
-scripts/tart/use-worktree-dev-vm.sh
+git worktree add ../remo-feature my-branch
+cd ../remo-feature
+remo-tart up
 ```
 
-That attaches the new worktree to the existing `remo-dev` VM and prepares it
-for development inside the same shared guest.
+`remo-tart up` derives the mount name from the worktree directory and re-attaches
+the VM with the new mount. If the VM is currently running with a different
+worktree mounted, it restarts the VM with the new mount attached.
 
-If you need a custom guest mount name:
+To attach without connecting (useful in scripts):
 
 ```bash
-scripts/tart/use-worktree-dev-vm.sh --mount-name remo-my-branch
+remo-tart use            # attach current worktree
+remo-tart use /path/to/other/worktree
 ```
 
-The helper prints the exact connection commands to use next.
+## Connecting Without Re-Attaching
 
-## Connect Through CLI, Cursor, Or VS Code
-
-Use the contributor-facing connection wrapper:
+If the VM is already running and the current worktree is already attached,
+connect directly:
 
 ```bash
-scripts/tart/connect-dev-vm.sh cli
-scripts/tart/connect-dev-vm.sh cursor
-scripts/tart/connect-dev-vm.sh vscode
+remo-tart connect cli
+remo-tart connect vscode
+remo-tart connect cursor
 ```
 
-Connection modes:
+Each opens the editor against the worktree's mount inside the guest at
+`/Volumes/My Shared Files/<mount-name>`.
 
-- `cli` opens an interactive shell inside the VM at the selected worktree
-- `cursor` opens the mounted worktree through Cursor Remote SSH
-- `vscode` opens the mounted worktree through VS Code Remote SSH
+If the VM is not running, `connect` fails with a hint pointing at `remo-tart up`.
 
-Optional target selection:
+## Cleaning Up a Worktree
+
+When you're done with a worktree:
 
 ```bash
-scripts/tart/connect-dev-vm.sh cli remo-my-branch
-scripts/tart/connect-dev-vm.sh cursor /absolute/path/to/worktree
-scripts/tart/connect-dev-vm.sh vscode --new-window
+remo-tart clean-worktree              # current worktree
+remo-tart clean-worktree /path/to/old-worktree
 ```
 
-The editor connection scripts use the managed SSH alias/proxy path that tunnels
-through `tart exec` into guest loopback `sshd`. On this host, that is the
-working path; direct bridged guest-IP SSH is not reliable.
+This removes the mount from the manifest. The VM is not restarted automatically;
+the next `remo-tart up` from a different worktree will pick up the cleaned
+manifest.
 
-## Daily Development Inside The VM
-
-Typical flow after connecting:
+To destroy the entire VM:
 
 ```bash
-cargo check --workspace
+remo-tart destroy --force
+```
+
+This also cleans up the managed SSH config block and the include in
+`~/.ssh/config`.
+
+## Status and Doctor
+
+Two non-destructive observability commands:
+
+```bash
+remo-tart status            # human-readable
+remo-tart status --json     # machine-readable
+remo-tart doctor            # health checks; exit code 1 if any issue
+```
+
+`status` reports VM state, launchd job presence, mount manifest contents, and
+SSH config state. `doctor` runs ~10 checks covering project config, VM state,
+launchd consistency, mount-path existence, pack file presence, SSH config,
+and SSH key.
+
+Use `doctor` before opening an issue — it usually surfaces the actual cause.
+
+## Running Tests Inside the VM
+
+Open a CLI shell and run the project's tests there:
+
+```bash
+remo-tart up cli
+# inside the VM:
+cargo test --workspace
 ./build-ios.sh sim
-scripts/tart/e2e-dev-vm.sh -- --screenshots
 ```
 
-If you need to build the example app directly:
+Or use the project-defined verification script:
 
 ```bash
-cd examples/ios
-REMO_LOCAL=1 xcodebuild build -workspace RemoExample.xcworkspace -scheme RemoExample \
-  -derivedDataPath "$REMO_TART_DERIVED_DATA/RemoExample" \
-  -destination 'platform=iOS Simulator,name=iPhone 17'
+remo-tart use            # attach + run .tart/verify-worktree.sh
 ```
 
-The important rule is that builds should use the worktree-local `.tart` paths
-exported by the Tart shell helpers rather than default global cache locations.
+(`.tart/verify-worktree.sh` runs after every `remo-tart use` unless you've
+disabled verification — currently this happens implicitly inside the
+provisioning step.)
 
-`scripts/tart/e2e-dev-vm.sh` is the maintained way to reuse the repository’s
-existing `scripts/e2e-test.sh` flow inside the VM while keeping artifacts and
-DerivedData worktree-local.
+## When Things Break
 
-## Clean Current Worktree Caches
+Order of operations:
 
-When you want to clear generated state for only the current worktree:
+1. `remo-tart doctor` — what does it say?
+2. `remo-tart status` — does the actual state match what you expected?
+3. `remo-tart destroy --force && remo-tart up` — last resort; recreates the VM.
+
+Common failure modes:
+
+- **`vm is not running`**: run `remo-tart up` (creates and connects) or
+  `remo-tart start` (boots without changing mounts).
+- **`unable to find the Remo repo root`**: you're outside a worktree containing
+  `.tart/project.toml`. `cd` into one.
+- **`no mounts attached`**: VM is running but this worktree was never attached.
+  Run `remo-tart use` from this worktree.
+- **Stale launchd job**: `remo-tart doctor` reports a launchd job present but
+  VM not running. Run `remo-tart up` again — the orchestrator clears the stale
+  job before re-submitting.
+
+## Project Config Schema
+
+`.tart/project.toml` is the declarative config. All fields:
+
+```toml
+[project]
+slug = "remo"
+
+[vm]
+name = "remo-dev"
+base_image = "ghcr.io/cirruslabs/macos-tahoe-xcode:26"
+cpu = 6
+memory_gb = 12
+network = "bridged:en0"        # "shared" | "softnet" | "bridged:<iface>"
+guest_user = "admin"            # optional; defaults to "admin"
+guest_password = "admin"        # optional; defaults to "admin"
+
+[packs]
+enabled = ["shell", "ios", "rust", "node", "agents"]
+
+[scripts]
+provision = ".tart/provision.sh"
+verify_worktree = ".tart/verify-worktree.sh"
+```
+
+Pack scripts under `.tart/packs/<name>.sh` are user-extensible — write a bash
+file that defines `tart_pack_<name>_ensure` and reference it in
+`[packs] enabled`.
+
+## Working On the CLI Itself
+
+Source layout:
+
+- `tools/remo-tart/src/remo_tart/` — Python package
+- `tools/remo-tart/tests/` — pytest unit tests
+- `tools/remo-tart/pyproject.toml` — uv project manifest
+
+Daily commands from inside `tools/remo-tart/`:
 
 ```bash
-scripts/tart/clean-worktree-dev-vm.sh
+uv run ruff check .
+uv run ruff format .
+uv run pytest -v
 ```
 
-Default cleanup removes:
+The pre-commit hook automatically runs ruff when `tools/remo-tart/**` or
+`.tart/**` files change. CI runs ruff + pytest on every push.
 
-- `.tart/DerivedData`
-- `.tart/npm-cache`
-- `.tart/tmp`
-
-To also remove Rust incremental build output:
-
-```bash
-scripts/tart/clean-worktree-dev-vm.sh --full
-```
-
-This cleanup preserves tracked Tart configuration:
-
-- `.tart/project.sh`
-- `.tart/packs/`
-
-Use this for worktree-local reset. Do not use `destroy-dev-vm.sh --force` when
-you only need to clear generated state for one worktree.
-
-## Inspect Health With Status And Doctor
-
-Raw status:
-
-```bash
-scripts/tart/status-dev-vm.sh
-scripts/tart/status-dev-vm.sh remo-my-branch
-```
-
-Human-readable health check:
-
-```bash
-scripts/tart/doctor-dev-vm.sh
-scripts/tart/doctor-dev-vm.sh remo-my-branch
-```
-
-Use these before assuming the Tart flow is broken. They surface:
-
-- missing or stopped VM state
-- stale mount manifest entries from deleted worktrees
-- missing hidden `.git` mount state
-- missing managed SSH config
-- malformed or missing `.tart/packs` declarations
-
-## Destroy The Whole Project VM Intentionally
-
-Only use this when you intentionally want to reset the entire `remo-dev` VM:
-
-```bash
-scripts/tart/destroy-dev-vm.sh --force
-```
-
-This is whole-project cleanup. It is not the right command for normal worktree
-cache cleanup.
+After editing CLI source, the editable install picks up changes immediately —
+no reinstall needed.
