@@ -107,6 +107,25 @@ def test_run_returns_child_exit_code(monkeypatch: pytest.MonkeyPatch, fake_repo:
 # ---------------------------------------------------------------------------
 
 
+def _attach_outcome(
+    pool_name: str = "remo-dev",
+    actions: tuple = (Action.NOTHING,),
+    host: Path | None = None,
+) -> object:
+    from remo_tart.worktree import AttachOutcome, WorktreeAttachment
+
+    host_path = host if host is not None else Path("/tmp/repo")
+    return AttachOutcome(
+        actions=actions,
+        manifest=(),
+        attachment=WorktreeAttachment(
+            pool_name=pool_name,
+            host_path=host_path,
+            guest_path=f"/Volumes/My Shared Files/{pool_name}",
+        ),
+    )
+
+
 @patch("remo_tart.cli._connect.connect_vscode")
 @patch("remo_tart.cli.worktree.ensure_attached")
 def test_up_vscode_invokes_worktree_then_connect(
@@ -114,13 +133,7 @@ def test_up_vscode_invokes_worktree_then_connect(
     connect_vscode: MagicMock,
     fake_repo: Path,
 ) -> None:
-    from remo_tart.mount import MountEntry
-
-    primary = MountEntry(name="remo-feat", host_path=fake_repo)
-    ensure.return_value = MagicMock(
-        primary=primary,
-        actions=(Action.CREATE,),
-    )
+    ensure.return_value = _attach_outcome(actions=(Action.CREATE,), host=fake_repo)
     connect_vscode.return_value = 0
     runner = CliRunner()
     result = runner.invoke(main, ["up", "vscode"])
@@ -136,10 +149,7 @@ def test_up_cli_mode_calls_connect_cli(
     connect_cli: MagicMock,
     fake_repo: Path,
 ) -> None:
-    from remo_tart.mount import MountEntry
-
-    primary = MountEntry(name="remo-main", host_path=fake_repo)
-    ensure.return_value = MagicMock(primary=primary, actions=(Action.NOTHING,))
+    ensure.return_value = _attach_outcome(host=fake_repo)
     connect_cli.return_value = 0
     runner = CliRunner()
     result = runner.invoke(main, ["up"])
@@ -154,10 +164,7 @@ def test_up_cursor_mode_calls_connect_cursor(
     connect_cursor: MagicMock,
     fake_repo: Path,
 ) -> None:
-    from remo_tart.mount import MountEntry
-
-    primary = MountEntry(name="remo-main", host_path=fake_repo)
-    ensure.return_value = MagicMock(primary=primary, actions=(Action.NOTHING,))
+    ensure.return_value = _attach_outcome(host=fake_repo)
     connect_cursor.return_value = 0
     runner = CliRunner()
     result = runner.invoke(main, ["up", "cursor"])
@@ -172,10 +179,7 @@ def test_up_cursor_mode_calls_connect_cursor(
 
 @patch("remo_tart.cli.worktree.ensure_attached")
 def test_use_calls_ensure_attached(ensure: MagicMock, fake_repo: Path) -> None:
-    from remo_tart.mount import MountEntry
-
-    primary = MountEntry(name="remo-main", host_path=fake_repo)
-    ensure.return_value = MagicMock(primary=primary, actions=(Action.NOTHING,))
+    ensure.return_value = _attach_outcome(host=fake_repo)
     runner = CliRunner()
     result = runner.invoke(main, ["use"])
     assert result.exit_code == 0
@@ -184,10 +188,7 @@ def test_use_calls_ensure_attached(ensure: MagicMock, fake_repo: Path) -> None:
 
 @patch("remo_tart.cli.worktree.ensure_attached")
 def test_use_with_explicit_path(ensure: MagicMock, fake_repo: Path) -> None:
-    from remo_tart.mount import MountEntry
-
-    primary = MountEntry(name="remo-wt", host_path=fake_repo)
-    ensure.return_value = MagicMock(primary=primary, actions=(Action.ATTACH_MOUNT_AND_START,))
+    ensure.return_value = _attach_outcome(actions=(Action.ATTACH_MOUNT_AND_START,), host=fake_repo)
     runner = CliRunner()
     result = runner.invoke(main, ["use", str(fake_repo)])
     assert result.exit_code == 0
@@ -235,18 +236,12 @@ def test_start_raises_when_vm_missing(vm_exists: MagicMock, fake_repo: Path) -> 
 
 @patch("remo_tart.cli._connect.connect_vscode")
 @patch("remo_tart.cli.vm.is_running")
-@patch("remo_tart.cli.mount.manifest_read")
 def test_connect_vscode_when_running(
-    manifest_read: MagicMock,
     is_running: MagicMock,
     connect_vscode: MagicMock,
     fake_repo: Path,
 ) -> None:
-    from remo_tart.mount import MountEntry
-
     is_running.return_value = True
-    primary = MountEntry(name="remo-main", host_path=fake_repo)
-    manifest_read.return_value = [primary]
     connect_vscode.return_value = 0
     runner = CliRunner()
     result = runner.invoke(main, ["connect", "vscode"])
@@ -265,40 +260,17 @@ def test_connect_errors_when_not_running(is_running: MagicMock, fake_repo: Path)
 
 @patch("remo_tart.cli._connect.connect_cli")
 @patch("remo_tart.cli.vm.is_running")
-@patch("remo_tart.cli.mount.manifest_read")
 def test_connect_cli_default_mode(
-    manifest_read: MagicMock,
     is_running: MagicMock,
     connect_cli: MagicMock,
     fake_repo: Path,
 ) -> None:
-    from remo_tart.mount import MountEntry
-
     is_running.return_value = True
-    primary = MountEntry(name="remo-main", host_path=fake_repo)
-    manifest_read.return_value = [primary]
     connect_cli.return_value = 0
     runner = CliRunner()
     result = runner.invoke(main, ["connect"])
     assert result.exit_code == 0
     connect_cli.assert_called_once()
-
-
-@patch("remo_tart.cli.vm.is_running", return_value=True)
-@patch("remo_tart.cli.mount.manifest_read", return_value=[])
-def test_connect_raises_when_manifest_is_empty(
-    manifest_read: MagicMock,
-    is_running: MagicMock,
-    fake_repo: Path,
-) -> None:
-    from remo_tart.errors import RemoTartError
-
-    runner = CliRunner()
-    result = runner.invoke(main, ["connect", "vscode"])
-    assert result.exit_code == 1
-    # RemoTartError propagates as the exception when Rich console swallows output
-    assert isinstance(result.exception, RemoTartError)
-    assert "no mounts" in str(result.exception).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -500,13 +472,106 @@ def test_bootstrap_calls_ensure_attached_and_connect_cli(
     connect_cli: MagicMock,
     fake_repo: Path,
 ) -> None:
-    from remo_tart.mount import MountEntry
-
-    primary = MountEntry(name="remo-main", host_path=fake_repo)
-    ensure.return_value = MagicMock(primary=primary, actions=(Action.CREATE,))
+    ensure.return_value = _attach_outcome(actions=(Action.CREATE,), host=fake_repo)
     connect_cli.return_value = 0
     runner = CliRunner()
     result = runner.invoke(main, ["bootstrap"])
     assert result.exit_code == 0
     ensure.assert_called_once()
     connect_cli.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# --pool flag coverage
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli._connect.connect_cli", return_value=0)
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_up_passes_pool_to_ensure_attached(
+    ensure: MagicMock,
+    connect: MagicMock,
+    fake_repo: Path,
+) -> None:
+    ensure.return_value = _attach_outcome(pool_name="alpha", host=fake_repo)
+    runner = CliRunner()
+    result = runner.invoke(main, ["up", "--pool", "alpha"], catch_exceptions=False)
+    assert result.exit_code == 0
+    kwargs = ensure.call_args.kwargs
+    assert kwargs.get("pool_name") == "alpha"
+
+
+@patch("remo_tart.cli._connect.connect_cli", return_value=0)
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_up_default_pool_is_none(ensure: MagicMock, connect: MagicMock, fake_repo: Path) -> None:
+    ensure.return_value = _attach_outcome(host=fake_repo)
+    runner = CliRunner()
+    runner.invoke(main, ["up"], catch_exceptions=False)
+    kwargs = ensure.call_args.kwargs
+    assert kwargs.get("pool_name") is None
+
+
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_use_accepts_pool(ensure: MagicMock, fake_repo: Path) -> None:
+    ensure.return_value = _attach_outcome(pool_name="beta", host=fake_repo)
+    runner = CliRunner()
+    result = runner.invoke(main, ["use", "--pool", "beta"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert ensure.call_args.kwargs.get("pool_name") == "beta"
+
+
+@patch("remo_tart.cli.launchd.submit")
+@patch("remo_tart.cli.launchd.remove")
+@patch("remo_tart.cli.vm.exists", return_value=True)
+def test_start_uses_pool_name_for_vm(
+    exists: MagicMock, remove: MagicMock, submit: MagicMock, fake_repo: Path
+) -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["start", "--pool", "alpha"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert exists.call_args.args == ("alpha",)
+
+
+@patch("remo_tart.cli.vm.is_running", return_value=True)
+@patch("remo_tart.cli._connect.connect_cli", return_value=0)
+def test_connect_uses_pool_name(connect: MagicMock, is_running: MagicMock, fake_repo: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["connect", "--pool", "alpha"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert connect.call_args.args[0] == "alpha"
+
+
+@patch("remo_tart.cli._status.collect")
+@patch("remo_tart.cli._status.render_human", return_value="ok")
+def test_status_uses_pool_name(render: MagicMock, collect: MagicMock, fake_repo: Path) -> None:
+    collect.return_value = {}
+    runner = CliRunner()
+    runner.invoke(main, ["status", "--pool", "alpha"], catch_exceptions=False)
+    assert collect.call_args.args[0] == "alpha"
+
+
+@patch("remo_tart.cli._ssh.remove_include_from_user_config")
+@patch("remo_tart.cli._ssh.remove_managed_block")
+@patch("remo_tart.cli.vm.exists", return_value=False)
+@patch("remo_tart.cli.launchd.remove")
+def test_destroy_uses_pool_name(
+    ld_remove: MagicMock,
+    vm_exists: MagicMock,
+    ssh_rm_block: MagicMock,
+    ssh_rm_include: MagicMock,
+    fake_repo: Path,
+) -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["destroy", "--pool", "alpha", "--force"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert "alpha" in ld_remove.call_args.args[0]
+
+
+@patch("remo_tart.cli.mount.manifest_remove")
+def test_clean_worktree_uses_pool_name(rm: MagicMock, fake_repo: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["clean-worktree", str(fake_repo), "--pool", "alpha"], catch_exceptions=False
+    )
+    assert result.exit_code == 0
+    assert "alpha" in str(rm.call_args.args[0])

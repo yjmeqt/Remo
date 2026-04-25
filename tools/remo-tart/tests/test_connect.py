@@ -4,10 +4,20 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from remo_tart.connect import connect_cli, connect_cursor, connect_vscode
-from remo_tart.mount import MountEntry
+from remo_tart.worktree import WorktreeAttachment
 
 
-@patch("subprocess.run")
+def _attachment(
+    guest_path: str = "/Volumes/My Shared Files/remo-dev/.worktrees/foo",
+) -> WorktreeAttachment:
+    return WorktreeAttachment(
+        pool_name="remo-dev",
+        host_path=Path("/users/x/remo/.worktrees/foo"),
+        guest_path=guest_path,
+    )
+
+
+@patch("remo_tart.connect.subprocess.run")
 def test_connect_cli_runs_ssh_with_alias(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=0)
     assert connect_cli("remo-dev", "admin") == 0
@@ -15,52 +25,49 @@ def test_connect_cli_runs_ssh_with_alias(run: MagicMock) -> None:
     assert called_argv == ["ssh", "tart-remo-dev"]
 
 
-@patch("subprocess.run")
+@patch("remo_tart.connect.subprocess.run")
 def test_connect_cli_propagates_nonzero(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=130)
     assert connect_cli("remo-dev", "admin") == 130
 
 
-@patch("subprocess.run")
-def test_connect_vscode_default_reuses_window(run: MagicMock) -> None:
+@patch("remo_tart.connect.subprocess.run")
+def test_connect_vscode_builds_uri_from_attachment_guest_path(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=0)
-    mount = MountEntry("remo-feat", Path("/r"))
-    connect_vscode("remo-dev", "admin", mount)
-    (called_argv,) = run.call_args[0]
-    assert called_argv[0] == "code"
-    assert "--folder-uri" in called_argv
-    idx = called_argv.index("--folder-uri")
-    uri = called_argv[idx + 1]
-    assert uri == "vscode-remote://ssh-remote+tart-remo-dev/Volumes/My Shared Files/remo-feat"
-    assert "--reuse-window" in called_argv
-    assert "--new-window" not in called_argv
+    code = connect_vscode("remo-dev", "admin", _attachment())
+    assert code == 0
+    argv = run.call_args.args[0]
+    assert argv[0] == "code"
+    folder_uri_idx = argv.index("--folder-uri") + 1
+    assert argv[folder_uri_idx] == (
+        "vscode-remote://ssh-remote+tart-remo-dev/Volumes/My Shared Files/remo-dev/.worktrees/foo"
+    )
+    assert "--reuse-window" in argv
+    assert "--new-window" not in argv
 
 
-@patch("subprocess.run")
+@patch("remo_tart.connect.subprocess.run")
 def test_connect_vscode_new_window(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=0)
-    mount = MountEntry("remo-feat", Path("/r"))
-    connect_vscode("remo-dev", "admin", mount, new_window=True)
-    (called_argv,) = run.call_args[0]
-    assert "--new-window" in called_argv
-    assert "--reuse-window" not in called_argv
+    connect_vscode("remo-dev", "admin", _attachment(), new_window=True)
+    argv = run.call_args.args[0]
+    assert "--new-window" in argv
+    assert "--reuse-window" not in argv
 
 
-@patch("subprocess.run")
-def test_connect_cursor_uses_cursor_binary(run: MagicMock) -> None:
+@patch("remo_tart.connect.subprocess.run")
+def test_connect_cursor_builds_uri_from_attachment_guest_path(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=0)
-    mount = MountEntry("remo-feat", Path("/r"))
-    connect_cursor("remo-dev", "admin", mount)
-    (called_argv,) = run.call_args[0]
-    assert called_argv[0] == "cursor"
-    # Same URI as vscode (cursor accepts vscode-remote://)
-    idx = called_argv.index("--folder-uri")
-    uri = called_argv[idx + 1]
-    assert uri.startswith("vscode-remote://ssh-remote+tart-remo-dev/")
+    connect_cursor("remo-dev", "admin", _attachment("/Volumes/My Shared Files/remo-dev"))
+    argv = run.call_args.args[0]
+    assert argv[0] == "cursor"
+    folder_uri_idx = argv.index("--folder-uri") + 1
+    assert argv[folder_uri_idx] == (
+        "vscode-remote://ssh-remote+tart-remo-dev/Volumes/My Shared Files/remo-dev"
+    )
 
 
-@patch("subprocess.run")
+@patch("remo_tart.connect.subprocess.run")
 def test_connect_vscode_propagates_returncode(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=2)
-    mount = MountEntry("remo-feat", Path("/r"))
-    assert connect_vscode("remo-dev", "admin", mount) == 2
+    assert connect_vscode("remo-dev", "admin", _attachment()) == 2

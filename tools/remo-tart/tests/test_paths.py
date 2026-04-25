@@ -67,3 +67,65 @@ def test_find_repo_root_raises_when_not_found(tmp_path: Path) -> None:
         find_repo_root(tmp_path)
     assert excinfo.value.hint is not None
     assert "project.toml" in excinfo.value.hint
+
+
+def test_git_worktree_root_in_main_checkout(tmp_path: Path) -> None:
+    """In the main checkout, worktree root == repo root."""
+    import subprocess as sp
+
+    from remo_tart.paths import git_worktree_root
+
+    sp.run(
+        ["git", "-C", str(tmp_path), "init", "--initial-branch=main"],
+        check=True,
+        capture_output=True,
+    )
+    sub = tmp_path / "tools" / "thing"
+    sub.mkdir(parents=True)
+    assert git_worktree_root(sub) == tmp_path.resolve()
+
+
+def test_git_worktree_root_in_linked_worktree(tmp_path: Path) -> None:
+    """Inside a `.worktrees/<name>` directory, returns that worktree root."""
+    import subprocess as sp
+
+    from remo_tart.paths import git_worktree_root
+
+    main = tmp_path / "main"
+    main.mkdir()
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "PATH": "/usr/bin:/bin",
+    }
+    sp.run(
+        ["git", "-C", str(main), "init", "--initial-branch=main"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    sp.run(
+        ["git", "-C", str(main), "commit", "--allow-empty", "-m", "i"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    wt = main / ".worktrees" / "foo"
+    sp.run(
+        ["git", "-C", str(main), "worktree", "add", str(wt)],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    inner = wt / "deep" / "dir"
+    inner.mkdir(parents=True)
+    assert git_worktree_root(inner) == wt.resolve()
+
+
+def test_git_worktree_root_falls_back_when_not_a_repo(tmp_path: Path) -> None:
+    """Outside a git repo, return the input path unchanged (resolved)."""
+    from remo_tart.paths import git_worktree_root
+
+    assert git_worktree_root(tmp_path) == tmp_path.resolve()

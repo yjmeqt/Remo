@@ -8,8 +8,8 @@ and the SSH config updated.  Ported from:
 
 from __future__ import annotations
 
+import os
 import shlex
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,11 +20,8 @@ from remo_tart.console import done, get_console, step
 from remo_tart.errors import RemoTartError
 from remo_tart.mount import (
     MountEntry,
-    git_root_bridge_entry,
-    manifest_prune_stale,
     manifest_read,
-    manifest_upsert,
-    mount_name_for_path,
+    manifest_write,
 )
 from remo_tart.paths import (
     mount_manifest_path,
@@ -33,6 +30,7 @@ from remo_tart.paths import (
     user_ssh_config_path,
     vm_log_path,
 )
+from remo_tart.pool import PoolConfig, resolve_pool
 from remo_tart.state import Action, VmState, decide
 
 _WAIT_INTERVAL = 2  # seconds between polls
@@ -44,11 +42,58 @@ _WAIT_ATTEMPTS = 90  # maximum polling attempts (~3 minutes total)
 # ---------------------------------------------------------------------------
 
 
+_GUEST_SHARED_ROOT = "/Volumes/My Shared Files"
+
+
+@dataclass(frozen=True)
+class WorktreeAttachment:
+    """The worktree the user just attached to the pool.
+
+    ``host_path`` is the host directory (the git worktree top).
+    ``guest_path`` is the corresponding absolute path inside the VM, computed
+    as ``<shared_root>/<pool_name>/<rel-from-repo-root>``. Editors and connect
+    handlers open ``guest_path``; ``host_path`` is exposed for status/logging.
+    """
+
+    pool_name: str
+    host_path: Path
+    guest_path: str
+
+
+def guest_path_for_worktree(pool_name: str, repo_root: Path, worktree: Path) -> str:
+    """Compute the guest absolute path of *worktree* under the umbrella.
+
+    Raises :class:`RemoTartError` if *worktree* is not inside *repo_root* —
+    cross-project pools are out of scope for this MVP.
+    """
+    repo_resolved = repo_root.resolve()
+    wt_resolved = worktree.resolve()
+    try:
+        rel = wt_resolved.relative_to(repo_resolved)
+    except ValueError as err:
+        raise RemoTartError(
+            f"worktree {wt_resolved} is not under repo root {repo_resolved}",
+            hint="cross-repo pool membership is not yet supported",
+        ) from err
+    if str(rel) == ".":
+        return f"{_GUEST_SHARED_ROOT}/{pool_name}"
+    return f"{_GUEST_SHARED_ROOT}/{pool_name}/{rel.as_posix()}"
+
+
 @dataclass(frozen=True)
 class AttachOutcome:
+    """Result of ``ensure_attached``.
+
+    ``actions`` is the state-machine output for diagnostic display.
+    ``manifest`` is the post-attach mount list (always one entry: the umbrella).
+    ``attachment`` carries the worktree the user attached: host path + guest
+    path under the umbrella. Connect handlers should read ``attachment``;
+    ``manifest`` is for status reporting.
+    """
+
     actions: tuple[Action, ...]
     manifest: tuple[MountEntry, ...]
-    primary: MountEntry
+    attachment: WorktreeAttachment
 
 
 def ensure_attached(
@@ -56,70 +101,55 @@ def ensure_attached(
     project: ProjectConfig,
     worktree_host_path: Path,
     *,
+    pool_name: str | None = None,
     headless: bool = True,
 ) -> AttachOutcome:
-    """Make the VM running with the given worktree attached; idempotent.
+    """Make the pool VM running with the umbrella mounted; idempotent.
 
-    ``headless`` controls whether ``tart run`` is invoked with
-    ``--no-graphics``.  Default True (no UI window).  When False, a UI window
-    opens.  Note: ``headless`` is set at boot; an already-running VM keeps
-    whatever mode it was started with until the next restart.
+    Always mounts ``repo_root`` once as ``<pool.name>`` — the umbrella. Adding
+    a new worktree under ``repo_root`` requires no manifest change and no VM
+    restart, so cross-worktree ``up`` collapses to ``NOTHING`` after the first
+    boot.
     """
-    vm_name = project.vm.name
-    manifest_path = mount_manifest_path(vm_name)
-    log_path = vm_log_path(vm_name)
-    key_path = ssh_key_path(vm_name)
+    pool = resolve_pool(project, pool_name)
+    manifest_path = mount_manifest_path(pool.name)
+    log_path = vm_log_path(pool.name)
+    key_path = ssh_key_path(pool.name)
 
-    # Step 1: Prune stale entries, then upsert the primary + git-root bridge.
-    manifest_prune_stale(manifest_path)
+    _normalize_worktree_gitdirs(repo_root)
 
-    primary_entry = MountEntry(
-        name=mount_name_for_path(project.slug, worktree_host_path),
-        host_path=worktree_host_path,
-    )
-    bridge_entry = git_root_bridge_entry(project.slug, _resolve_git_common_dir(worktree_host_path))
-    manifest_upsert(manifest_path, primary_entry)
-    manifest_upsert(manifest_path, bridge_entry)
+    umbrella_entry = MountEntry(name=pool.name, host_path=repo_root.resolve())
+    manifest_write(manifest_path, [umbrella_entry])
 
-    # Step 2: Read VM state.  ``mount_matches`` is computed against the
-    # *running* VM's actual mounts (queried via tart exec), not the on-disk
-    # manifest — the manifest can drift ahead of the running VM if mounts
-    # were upserted between boots.
-    vm_state = _read_state(project, manifest_path, worktree_host_path)
+    vm_state = _read_state(pool)
 
-    # Step 3: Decide actions from the state machine.
-    actions = decide(vm_state)
-
-    # Step 4: Dispatch with the FULL manifest (not just primary + bridge), so a
-    # restart from worktree A keeps worktree B's mount alive too. Otherwise
-    # every cross-worktree `up` silently drops all other worktree shares.
     mounts = manifest_read(manifest_path)
+    actions = decide(vm_state)
     for action in actions:
         if action == Action.CREATE:
-            _action_create(project, mounts, log_path, key_path, headless=headless)
+            _action_create(project, pool, mounts, log_path, key_path, headless=headless)
         elif action == Action.UPDATE_MOUNT_AND_RESTART:
-            _action_update_mount_and_restart(project, mounts, log_path, headless=headless)
+            _action_update_mount_and_restart(project, pool, mounts, log_path, headless=headless)
         elif action == Action.START:
-            _action_start(project, mounts, log_path, headless=headless)
+            _action_start(project, pool, mounts, log_path, headless=headless)
         elif action == Action.ATTACH_MOUNT_AND_START:
-            _action_attach_mount_and_start(project, mounts, log_path, headless=headless)
+            _action_attach_mount_and_start(project, pool, mounts, log_path, headless=headless)
         elif action == Action.NOTHING:
-            _action_nothing(project)
+            _action_nothing(pool)
 
-    # Step 5: Configure SSH unconditionally. All operations are idempotent
-    # (keypair generation skips if exists, managed block upsert replaces by VM
-    # name, include is added once, authorized_keys uses grep-skip-if-present).
-    # This makes the workflow self-healing if a prior `up` was Ctrl-C'd
-    # before SSH was configured.
-    if vm.is_running(project.vm.name):
-        _configure_ssh(project, key_path)
+    if vm.is_running(pool.name):
+        _configure_ssh(project, pool, key_path)
 
-    # Step 6: Return outcome with the final manifest.
     final_manifest = manifest_read(manifest_path)
+    attachment = WorktreeAttachment(
+        pool_name=pool.name,
+        host_path=worktree_host_path.resolve(),
+        guest_path=guest_path_for_worktree(pool.name, repo_root, worktree_host_path),
+    )
     return AttachOutcome(
         actions=tuple(actions),
         manifest=tuple(final_manifest),
-        primary=primary_entry,
+        attachment=attachment,
     )
 
 
@@ -141,65 +171,65 @@ def _running_mount_names(vm_name: str) -> set[str]:
     return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
 
-def _read_state(
-    project: ProjectConfig,
-    manifest_path: Path,
-    worktree: Path,
-) -> VmState:
-    """Read current VM state. ``mount_matches`` reflects whether the running
-    guest actually has the worktree's mount loaded — queried via ``tart exec``,
-    not the on-disk manifest, because the manifest can drift ahead of the VM.
+def _read_state(pool: PoolConfig) -> VmState:
+    """Read current VM state for *pool*.
+
+    ``mount_matches`` is True iff the running guest has the umbrella share
+    (named after the pool) visible under ``/Volumes/My Shared Files``.
     """
-    name = project.vm.name
+    name = pool.name
     exists = vm.exists(name)
     running = exists and vm.is_running(name)
-    if running:
-        target_name = mount_name_for_path(project.slug, worktree)
-        mount_matches = target_name in _running_mount_names(name)
-    else:
-        mount_matches = False
+    mount_matches = pool.name in _running_mount_names(name) if running else False
     return VmState(exists=exists, running=running, mount_matches=mount_matches)
 
 
-def _resolve_git_common_dir(worktree: Path) -> Path:
-    """Return the absolute git common dir for ``worktree``.
+def _normalize_worktree_gitdirs(repo_root: Path) -> None:
+    """Rewrite ``<repo>/.worktrees/*/.git`` to use a *relative* gitdir.
 
-    In a git worktree, ``<worktree>/.git`` is a *file* pointing at the main
-    checkout's ``.git`` directory.  Tart can only mount directories, so the
-    bridge mount must target the common dir, not the per-worktree gitdir.
+    ``git worktree add`` writes ``gitdir: /abs/path/to/<repo>/.git/worktrees/<name>``
+    which is host-specific and unreadable inside the VM. A relative path
+    resolves identically on host and guest, eliminating the need for a
+    guest-side symlink bridge.
 
-    Falls back to ``<worktree>/.git`` if ``git`` is unavailable or the path is
-    not a git repository (e.g. unit tests that pass an arbitrary tmp_path).
+    Only files whose absolute target sits under ``<repo>/.git/worktrees/`` are
+    rewritten. Foreign or already-relative gitdir paths are left alone.
     """
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(worktree), "rev-parse", "--git-common-dir"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return worktree / ".git"
-    return (worktree / result.stdout.strip()).resolve()
-
-
-def _target_manifest(
-    project: ProjectConfig,
-    repo_root: Path,
-    worktree: Path,
-) -> list[MountEntry]:
-    """Build the target mount list: primary worktree + git-root bridge."""
-    del repo_root  # use git's own opinion of where the common dir lives
-    primary = MountEntry(
-        name=mount_name_for_path(project.slug, worktree),
-        host_path=worktree,
-    )
-    bridge = git_root_bridge_entry(project.slug, _resolve_git_common_dir(worktree))
-    return [primary, bridge]
+    worktrees_dir = repo_root / ".worktrees"
+    if not worktrees_dir.is_dir():
+        return
+    git_root = (repo_root / ".git").resolve()
+    for child in worktrees_dir.iterdir():
+        if not child.is_dir():
+            continue
+        git_file = child / ".git"
+        if not git_file.is_file():
+            continue
+        try:
+            content = git_file.read_text().strip()
+        except OSError:
+            continue
+        if not content.startswith("gitdir:"):
+            continue
+        target_str = content[len("gitdir:") :].strip()
+        target = Path(target_str)
+        if not target.is_absolute():
+            continue
+        try:
+            target_resolved = target.resolve()
+        except OSError:
+            continue
+        try:
+            target_resolved.relative_to(git_root)
+        except ValueError:
+            continue
+        rel = os.path.relpath(target_resolved, child.resolve())
+        git_file.write_text(f"gitdir: {rel}\n")
 
 
 def _action_create(
     project: ProjectConfig,
+    pool: PoolConfig,
     mounts: list[MountEntry],
     log_path: Path,
     ssh_key_path: Path,
@@ -207,14 +237,12 @@ def _action_create(
     headless: bool = True,
 ) -> None:
     """Create VM from base image, configure resources, and start it."""
-    name = project.vm.name
+    name = pool.name
     label_str = launchd.label(name)
 
-    # Truncate log to avoid confusion with stale output
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text("")
 
-    # Remove any stale launchd registration for this label to avoid submit failure
     launchd.remove(label_str)
 
     step(f"cloning base image {project.vm.base_image} as VM {name} (this can take several minutes)")
@@ -229,18 +257,18 @@ def _action_create(
 
 def _action_update_mount_and_restart(
     project: ProjectConfig,
+    pool: PoolConfig,
     mounts: list[MountEntry],
     log_path: Path,
     *,
     headless: bool = True,
 ) -> None:
     """Stop the VM, update mounts, and restart."""
-    name = project.vm.name
+    name = pool.name
     label_str = launchd.label(name)
     step(f"stopping VM {name} to update mounts")
     launchd.remove(label_str)
     _wait_for_stopped(name)
-    # Also wait for launchctl to actually drop the label, to avoid submit conflict
     for _ in range(30):
         if not launchd.job_present(label_str):
             break
@@ -253,20 +281,19 @@ def _action_update_mount_and_restart(
 
 def _action_start(
     project: ProjectConfig,
+    pool: PoolConfig,
     mounts: list[MountEntry],
     log_path: Path,
     *,
     headless: bool = True,
 ) -> None:
     """Submit the VM to launchd and wait for it to be running."""
-    name = project.vm.name
+    name = pool.name
     label_str = launchd.label(name)
 
-    # Truncate log to avoid confusion with stale output
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text("")
 
-    # Remove any stale launchd registration for this label to avoid submit failure
     launchd.remove(label_str)
 
     tart_args = vm.build_run_args(name, project.vm.network, mounts, headless=headless)
@@ -277,20 +304,19 @@ def _action_start(
 
 def _action_attach_mount_and_start(
     project: ProjectConfig,
+    pool: PoolConfig,
     mounts: list[MountEntry],
     log_path: Path,
     *,
     headless: bool = True,
 ) -> None:
     """Mount is already upserted before state read; just submit and wait."""
-    name = project.vm.name
+    name = pool.name
     label_str = launchd.label(name)
 
-    # Truncate log to avoid confusion with stale output
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text("")
 
-    # Remove any stale launchd registration for this label to avoid submit failure
     launchd.remove(label_str)
 
     tart_args = vm.build_run_args(name, project.vm.network, mounts, headless=headless)
@@ -299,11 +325,10 @@ def _action_attach_mount_and_start(
     _wait_for_guest_exec(name)
 
 
-def _action_nothing(project: ProjectConfig) -> None:
+def _action_nothing(pool: PoolConfig) -> None:
     """No-op — VM is already running with the correct mount."""
     get_console().print(
-        f"[dim]VM '{project.vm.name}' is already running with the correct mount. "
-        "Nothing to do.[/dim]"
+        f"[dim]VM '{pool.name}' is already running with the correct mount. Nothing to do.[/dim]"
     )
 
 
@@ -327,9 +352,9 @@ def _build_inject_command(pub: str) -> str:
     )
 
 
-def _configure_ssh(project: ProjectConfig, key_path: Path) -> None:
+def _configure_ssh(project: ProjectConfig, pool: PoolConfig, key_path: Path) -> None:
     """Configure SSH keypair, managed block, include directive, and authorized keys."""
-    name = project.vm.name
+    name = pool.name
     step(f"configuring SSH for {name}")
 
     # 1. Generate keypair (idempotent).

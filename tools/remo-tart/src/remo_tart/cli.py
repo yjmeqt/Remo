@@ -43,43 +43,10 @@ def _load_cfg(ctx: click.Context):  # type: ignore[return]
     return repo, project
 
 
-# ---------------------------------------------------------------------------
-# CLI-internal helpers
-# ---------------------------------------------------------------------------
+def _resolve_pool(project, pool_name: str | None):
+    from remo_tart.pool import resolve_pool
 
-
-def _resolve_primary_mount(
-    entries: list,  # type: ignore[type-arg]
-    cwd: Path,
-) -> object:
-    """Return the mount entry whose host_path matches cwd, or the first non-bridge entry.
-
-    This is a CLI-specific helper — not exported from mount.py.
-    """
-    if not entries:
-        raise RemoTartError(
-            "no mounts attached to this VM",
-            hint="run `remo-tart use` from this worktree to attach it",
-        )
-    cwd_resolved = cwd.resolve()
-    for entry in entries:
-        try:
-            if entry.host_path.resolve() == cwd_resolved:
-                return entry
-        except OSError:
-            continue
-    # No exact match — fall back to first non-git-root entry, but warn
-    non_bridge = [e for e in entries if not e.name.endswith("-git-root")]
-    if non_bridge:
-        get_console().print(
-            f"[yellow]warning:[/yellow] cwd {cwd} does not match any mount; "
-            f"using mount '{non_bridge[0].name}'"
-        )
-        return non_bridge[0]
-    raise RemoTartError(
-        f"cwd {cwd} is not a recorded mount and no non-bridge mount exists",
-        hint="run `remo-tart use` from this worktree to attach it",
-    )
+    return resolve_pool(project, pool_name)
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +74,15 @@ def main(ctx: click.Context, verbose: int) -> None:
     is_flag=True,
     help="Boot with a UI window. Triggers a restart if VM is currently headless.",
 )
+@click.option(
+    "--pool",
+    "pool_name",
+    type=str,
+    default=None,
+    help="Pool (VM identity) to join; defaults to project.vm.name.",
+)
 @click.pass_context
-def up(ctx: click.Context, mode: str, display: bool) -> None:
+def up(ctx: click.Context, mode: str, display: bool, pool_name: str | None) -> None:
     """Attach the current worktree, ensure the VM is running, and connect.
 
     By default the VM runs headless (no UI window). Use ``--display`` if you
@@ -117,20 +91,27 @@ def up(ctx: click.Context, mode: str, display: bool) -> None:
     """
     from remo_tart.console import done as _done
     from remo_tart.console import step as _step
+    from remo_tart.paths import git_worktree_root
 
     repo, project = _load_cfg(ctx)
-    cwd = Path.cwd()
-    _step(f"up({mode}) for worktree {cwd}")
-    outcome = worktree.ensure_attached(repo, project, cwd, headless=not display)
+    wt_root = git_worktree_root(Path.cwd())
+    _step(f"up({mode}) for worktree {wt_root}")
+    outcome = worktree.ensure_attached(
+        repo,
+        project,
+        wt_root,
+        pool_name=pool_name,
+        headless=not display,
+    )
     _done(f"actions: {', '.join(a.name for a in outcome.actions)}")
-    name = project.vm.name
+    name = outcome.attachment.pool_name
     _step(f"connecting via {mode}")
     if mode == "cli":
         code = _connect.connect_cli(name, project.vm.guest_user)
     elif mode == "vscode":
-        code = _connect.connect_vscode(name, project.vm.guest_user, outcome.primary)
+        code = _connect.connect_vscode(name, project.vm.guest_user, outcome.attachment)
     else:  # cursor
-        code = _connect.connect_cursor(name, project.vm.guest_user, outcome.primary)
+        code = _connect.connect_cursor(name, project.vm.guest_user, outcome.attachment)
     ctx.exit(code)
 
 
@@ -139,14 +120,20 @@ def up(ctx: click.Context, mode: str, display: bool) -> None:
 
 @main.command()
 @click.argument("worktree_path", required=False, metavar="PATH")
+@click.option("--pool", "pool_name", type=str, default=None, help="Pool to join.")
 @click.pass_context
-def use(ctx: click.Context, worktree_path: str | None) -> None:
+def use(ctx: click.Context, worktree_path: str | None, pool_name: str | None) -> None:
     """Attach a worktree to the VM (mount + restart if needed)."""
+    from remo_tart.paths import git_worktree_root
+
     repo, project = _load_cfg(ctx)
-    path = Path(worktree_path).resolve() if worktree_path else Path.cwd()
-    outcome = worktree.ensure_attached(repo, project, path)
+    if worktree_path:
+        path = git_worktree_root(Path(worktree_path).resolve())
+    else:
+        path = git_worktree_root(Path.cwd())
+    outcome = worktree.ensure_attached(repo, project, path, pool_name=pool_name)
     get_console().print(
-        f"[green]Attached[/green] {outcome.primary.name} "
+        f"[green]Attached[/green] {outcome.attachment.pool_name} "
         f"(actions: {', '.join(a.name for a in outcome.actions)})"
     )
 
@@ -157,11 +144,13 @@ def use(ctx: click.Context, worktree_path: str | None) -> None:
     is_flag=True,
     help="Boot with a UI window. Default is headless.",
 )
+@click.option("--pool", "pool_name", type=str, default=None, help="Pool to start.")
 @click.pass_context
-def start(ctx: click.Context, display: bool) -> None:
+def start(ctx: click.Context, display: bool, pool_name: str | None) -> None:
     """Start the VM without changing mounts or connecting."""
     _repo, project = _load_cfg(ctx)
-    name = project.vm.name
+    pool = _resolve_pool(project, pool_name)
+    name = pool.name
     if not vm.exists(name):
         raise RemoTartError(
             "vm does not exist",
@@ -172,7 +161,6 @@ def start(ctx: click.Context, display: bool) -> None:
     manifest_path = mount_manifest_path(name)
     mounts = manifest_read(manifest_path)
     launchd.remove(label)
-    # Truncate log to avoid confusion with stale output
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text("")
     tart_args = vm.build_run_args(name, project.vm.network, mounts, headless=not display)
@@ -181,26 +169,33 @@ def start(ctx: click.Context, display: bool) -> None:
 
 @main.command()
 @click.argument("mode", type=click.Choice(["cli", "vscode", "cursor"]), default="cli")
+@click.option("--pool", "pool_name", type=str, default=None, help="Pool to connect to.")
 @click.pass_context
-def connect(ctx: click.Context, mode: str) -> None:
+def connect(ctx: click.Context, mode: str, pool_name: str | None) -> None:
     """Connect to the running VM (cli / vscode / cursor)."""
-    _repo, project = _load_cfg(ctx)
-    name = project.vm.name
+    from remo_tart.paths import git_worktree_root
+    from remo_tart.worktree import WorktreeAttachment, guest_path_for_worktree
+
+    repo, project = _load_cfg(ctx)
+    pool = _resolve_pool(project, pool_name)
+    name = pool.name
     if not vm.is_running(name):
         raise RemoTartError(
             f"vm is not running: {name}",
             hint="run `remo-tart up` to start and connect, or `remo-tart start` to only start",
         )
-    # Find the primary mount: the one whose host_path matches cwd or first entry
-    manifest_path = mount_manifest_path(name)
-    entries = mount.manifest_read(manifest_path)
-    primary = _resolve_primary_mount(entries, Path.cwd())
+    wt_root = git_worktree_root(Path.cwd())
+    attachment = WorktreeAttachment(
+        pool_name=name,
+        host_path=wt_root,
+        guest_path=guest_path_for_worktree(name, repo, wt_root),
+    )
     if mode == "cli":
         code = _connect.connect_cli(name, project.vm.guest_user)
     elif mode == "vscode":
-        code = _connect.connect_vscode(name, project.vm.guest_user, primary)
+        code = _connect.connect_vscode(name, project.vm.guest_user, attachment)
     else:  # cursor
-        code = _connect.connect_cursor(name, project.vm.guest_user, primary)
+        code = _connect.connect_cursor(name, project.vm.guest_user, attachment)
     ctx.exit(code)
 
 
@@ -209,12 +204,16 @@ def connect(ctx: click.Context, mode: str) -> None:
 
 @main.command()
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
+@click.option("--pool", "pool_name", type=str, default=None, help="Pool to inspect.")
 @click.pass_context
-def status(ctx: click.Context, as_json: bool) -> None:
+def status(ctx: click.Context, as_json: bool, pool_name: str | None) -> None:
     """Show VM status."""
+    from remo_tart.paths import git_worktree_root
+
     repo, project = _load_cfg(ctx)
-    name = project.vm.name
-    data = _status.collect(name, repo, Path.cwd())
+    pool = _resolve_pool(project, pool_name)
+    wt_root = git_worktree_root(Path.cwd())
+    data = _status.collect(pool.name, repo, wt_root)
     output = _status.render_json(data) if as_json else _status.render_human(data)
     get_console().print(output)
 
@@ -237,11 +236,13 @@ def doctor(ctx: click.Context) -> None:
 
 @main.command(context_settings={"ignore_unknown_options": True})
 @click.argument("ssh_args", nargs=-1, type=click.UNPROCESSED)
+@click.option("--pool", "pool_name", type=str, default=None, help="Pool to ssh into.")
 @click.pass_context
-def ssh(ctx: click.Context, ssh_args: tuple[str, ...]) -> None:
+def ssh(ctx: click.Context, ssh_args: tuple[str, ...], pool_name: str | None) -> None:
     """Open an SSH session or run a command inside the VM."""
     _repo, project = _load_cfg(ctx)
-    name = project.vm.name
+    pool = _resolve_pool(project, pool_name)
+    name = pool.name
     if not vm.is_running(name):
         raise RemoTartError(
             f"vm is not running: {name}",
@@ -257,11 +258,13 @@ def ssh(ctx: click.Context, ssh_args: tuple[str, ...]) -> None:
 
 @main.command()
 @click.option("--force", is_flag=True, help="Skip confirmation.")
+@click.option("--pool", "pool_name", type=str, default=None, help="Pool to destroy.")
 @click.pass_context
-def destroy(ctx: click.Context, force: bool) -> None:
+def destroy(ctx: click.Context, force: bool, pool_name: str | None) -> None:
     """Destroy the VM."""
     _repo, project = _load_cfg(ctx)
-    name = project.vm.name
+    pool = _resolve_pool(project, pool_name)
+    name = pool.name
     if not force:
         confirmed = click.confirm(f"Destroy VM '{name}'? This cannot be undone.", default=False)
         if not confirmed:
@@ -272,7 +275,6 @@ def destroy(ctx: click.Context, force: bool) -> None:
         vm.delete(name)
     _ssh.remove_managed_block(ssh_include_path(), name)
     _ssh.remove_include_from_user_config(user_ssh_config_path(), ssh_include_path())
-    # Optionally remove the SSH key file
     key = ssh_key_path(name)
     if key.exists():
         key.unlink(missing_ok=True)
@@ -283,12 +285,16 @@ def destroy(ctx: click.Context, force: bool) -> None:
 
 @main.command(name="clean-worktree")
 @click.argument("path", required=False)
+@click.option("--pool", "pool_name", type=str, default=None, help="Pool whose manifest to edit.")
 @click.pass_context
-def clean_worktree(ctx: click.Context, path: str | None) -> None:
+def clean_worktree(ctx: click.Context, path: str | None, pool_name: str | None) -> None:
     """Remove a worktree from the mount manifest."""
+    from remo_tart.paths import git_worktree_root
+
     _repo, project = _load_cfg(ctx)
-    resolved = Path(path).resolve() if path else Path.cwd()
-    manifest_path = mount_manifest_path(project.vm.name)
+    pool = _resolve_pool(project, pool_name)
+    resolved = git_worktree_root(Path(path).resolve()) if path else git_worktree_root(Path.cwd())
+    manifest_path = mount_manifest_path(pool.name)
     mount_name = mount_name_for_path(project.slug, resolved)
     mount.manifest_remove(manifest_path, mount_name)
     get_console().print(f"[green]Removed[/green] mount entry '{mount_name}' from manifest.")
@@ -298,12 +304,13 @@ def clean_worktree(ctx: click.Context, path: str | None) -> None:
 @click.pass_context
 def bootstrap(ctx: click.Context) -> None:
     """First-time VM setup (create + provision)."""
+    from remo_tart.paths import git_worktree_root
+
     get_console().print("[bold]First-time setup[/bold] — creating and provisioning VM…")
     repo, project = _load_cfg(ctx)
-    cwd = Path.cwd()
-    worktree.ensure_attached(repo, project, cwd)
-    name = project.vm.name
-    code = _connect.connect_cli(name, project.vm.guest_user)
+    wt_root = git_worktree_root(Path.cwd())
+    outcome = worktree.ensure_attached(repo, project, wt_root)
+    code = _connect.connect_cli(outcome.attachment.pool_name, project.vm.guest_user)
     ctx.exit(code)
 
 
