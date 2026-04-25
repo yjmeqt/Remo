@@ -61,18 +61,24 @@ def test_missing_vm_triggers_create(
 @patch("remo_tart.worktree._configure_ssh")
 @patch("remo_tart.worktree._read_state")
 @patch("remo_tart.worktree._action_nothing")
-def test_healthy_state_is_nothing_and_skips_ssh_reconfig(
+@patch("remo_tart.worktree.vm.is_running", return_value=True)
+def test_healthy_state_is_nothing_and_still_configures_ssh(
+    is_running: MagicMock,
     nothing: MagicMock,
     read: MagicMock,
     config_ssh: MagicMock,
     fake_home: Path,
     fake_repo: Path,
 ) -> None:
+    """SSH config is idempotent and runs unconditionally when the VM is running.
+
+    This makes the workflow self-healing if a prior `up` was Ctrl-C'd before
+    SSH was configured (e.g. interrupted during `_wait_for_guest_exec`).
+    """
     read.return_value = VmState(exists=True, running=True, mount_matches=True)
     ensure_attached(fake_repo, _cfg(), fake_repo)
     nothing.assert_called_once()
-    # NOTHING path does NOT re-configure SSH (no duplicate key injection)
-    config_ssh.assert_not_called()
+    config_ssh.assert_called_once()
 
 
 @patch("remo_tart.worktree._configure_ssh")
@@ -130,6 +136,56 @@ def _read_manifest(path: Path) -> list:
     from remo_tart.mount import manifest_read
 
     return manifest_read(path)
+
+
+def test_resolve_git_common_dir_uses_git_when_in_a_worktree(tmp_path: Path) -> None:
+    """In a real git worktree, ``<worktree>/.git`` is a *file* pointing at the
+    main checkout's ``.git`` directory.  ``_resolve_git_common_dir`` must
+    return the directory, not the file, so Tart can mount it.
+    """
+    import subprocess as sp
+
+    from remo_tart.worktree import _resolve_git_common_dir
+
+    main = tmp_path / "main"
+    main.mkdir()
+    git_env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "PATH": "/usr/bin:/bin",
+    }
+    sp.run(
+        ["git", "-C", str(main), "init", "--initial-branch=main"],
+        check=True,
+        capture_output=True,
+        env=git_env,
+    )
+    sp.run(
+        ["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"],
+        check=True,
+        capture_output=True,
+        env=git_env,
+    )
+    worktree_path = tmp_path / "wt"
+    sp.run(
+        ["git", "-C", str(main), "worktree", "add", str(worktree_path)],
+        check=True,
+        capture_output=True,
+        env=git_env,
+    )
+
+    assert (worktree_path / ".git").is_file()  # worktree gitdir is a FILE
+    common = _resolve_git_common_dir(worktree_path)
+    assert common.is_dir()
+    assert common == (main / ".git").resolve()
+
+
+def test_resolve_git_common_dir_falls_back_when_not_a_git_repo(tmp_path: Path) -> None:
+    from remo_tart.worktree import _resolve_git_common_dir
+
+    assert _resolve_git_common_dir(tmp_path) == tmp_path / ".git"
 
 
 # ---------------------------------------------------------------------------

@@ -9,12 +9,14 @@ and the SSH config updated.  Ported from:
 from __future__ import annotations
 
 import shlex
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from remo_tart import launchd, ssh, vm
 from remo_tart.config import ProjectConfig
+from remo_tart.console import done, get_console, step
 from remo_tart.errors import RemoTartError
 from remo_tart.mount import (
     MountEntry,
@@ -53,8 +55,16 @@ def ensure_attached(
     repo_root: Path,
     project: ProjectConfig,
     worktree_host_path: Path,
+    *,
+    headless: bool = True,
 ) -> AttachOutcome:
-    """Make the VM running with the given worktree attached; idempotent."""
+    """Make the VM running with the given worktree attached; idempotent.
+
+    ``headless`` controls whether ``tart run`` is invoked with
+    ``--no-graphics``.  Default True (no UI window).  When False, a UI window
+    opens.  Note: ``headless`` is set at boot; an already-running VM keeps
+    whatever mode it was started with until the next restart.
+    """
     vm_name = project.vm.name
     manifest_path = mount_manifest_path(vm_name)
     log_path = vm_log_path(vm_name)
@@ -74,7 +84,7 @@ def ensure_attached(
         name=mount_name_for_path(project.slug, worktree_host_path),
         host_path=worktree_host_path,
     )
-    bridge_entry = git_root_bridge_entry(project.slug, repo_root / ".git")
+    bridge_entry = git_root_bridge_entry(project.slug, _resolve_git_common_dir(worktree_host_path))
     manifest_upsert(manifest_path, primary_entry)
     manifest_upsert(manifest_path, bridge_entry)
 
@@ -90,18 +100,22 @@ def ensure_attached(
     mounts = target
     for action in actions:
         if action == Action.CREATE:
-            _action_create(project, mounts, log_path, key_path)
+            _action_create(project, mounts, log_path, key_path, headless=headless)
         elif action == Action.UPDATE_MOUNT_AND_RESTART:
-            _action_update_mount_and_restart(project, mounts, log_path)
+            _action_update_mount_and_restart(project, mounts, log_path, headless=headless)
         elif action == Action.START:
-            _action_start(project, mounts, log_path)
+            _action_start(project, mounts, log_path, headless=headless)
         elif action == Action.ATTACH_MOUNT_AND_START:
-            _action_attach_mount_and_start(project, mounts, log_path)
+            _action_attach_mount_and_start(project, mounts, log_path, headless=headless)
         elif action == Action.NOTHING:
             _action_nothing(project)
 
-    # Step 5: Configure SSH for all actions except NOTHING.
-    if actions != [Action.NOTHING]:
+    # Step 5: Configure SSH unconditionally. All operations are idempotent
+    # (keypair generation skips if exists, managed block upsert replaces by VM
+    # name, include is added once, authorized_keys uses grep-skip-if-present).
+    # This makes the workflow self-healing if a prior `up` was Ctrl-C'd
+    # before SSH was configured.
+    if vm.is_running(project.vm.name):
         _configure_ssh(project, key_path)
 
     # Step 6: Return outcome with the final manifest.
@@ -140,17 +154,40 @@ def _read_state(
     return VmState(exists=exists, running=running, mount_matches=mount_matches)
 
 
+def _resolve_git_common_dir(worktree: Path) -> Path:
+    """Return the absolute git common dir for ``worktree``.
+
+    In a git worktree, ``<worktree>/.git`` is a *file* pointing at the main
+    checkout's ``.git`` directory.  Tart can only mount directories, so the
+    bridge mount must target the common dir, not the per-worktree gitdir.
+
+    Falls back to ``<worktree>/.git`` if ``git`` is unavailable or the path is
+    not a git repository (e.g. unit tests that pass an arbitrary tmp_path).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(worktree), "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return worktree / ".git"
+    return (worktree / result.stdout.strip()).resolve()
+
+
 def _target_manifest(
     project: ProjectConfig,
     repo_root: Path,
     worktree: Path,
 ) -> list[MountEntry]:
     """Build the target mount list: primary worktree + git-root bridge."""
+    del repo_root  # use git's own opinion of where the common dir lives
     primary = MountEntry(
         name=mount_name_for_path(project.slug, worktree),
         host_path=worktree,
     )
-    bridge = git_root_bridge_entry(project.slug, repo_root / ".git")
+    bridge = git_root_bridge_entry(project.slug, _resolve_git_common_dir(worktree))
     return [primary, bridge]
 
 
@@ -159,6 +196,8 @@ def _action_create(
     mounts: list[MountEntry],
     log_path: Path,
     ssh_key_path: Path,
+    *,
+    headless: bool = True,
 ) -> None:
     """Create VM from base image, configure resources, and start it."""
     name = project.vm.name
@@ -171,9 +210,12 @@ def _action_create(
     # Remove any stale launchd registration for this label to avoid submit failure
     launchd.remove(label_str)
 
+    step(f"cloning base image {project.vm.base_image} as VM {name} (this can take several minutes)")
     vm.create(name, project.vm.base_image)
+    step(f"configuring VM resources (cpu={project.vm.cpu}, memory={project.vm.memory_gb}G)")
     vm.set_resources(name, project.vm.cpu, project.vm.memory_gb)
-    tart_args = vm.build_run_args(name, project.vm.network, mounts)
+    tart_args = vm.build_run_args(name, project.vm.network, mounts, headless=headless)
+    step(f"submitting launchd job {label_str} ({'headless' if headless else 'with display'})")
     launchd.submit(label_str, tart_args, log_path)
     _wait_for_guest_exec(name)
 
@@ -182,10 +224,13 @@ def _action_update_mount_and_restart(
     project: ProjectConfig,
     mounts: list[MountEntry],
     log_path: Path,
+    *,
+    headless: bool = True,
 ) -> None:
     """Stop the VM, update mounts, and restart."""
     name = project.vm.name
     label_str = launchd.label(name)
+    step(f"stopping VM {name} to update mounts")
     launchd.remove(label_str)
     _wait_for_stopped(name)
     # Also wait for launchctl to actually drop the label, to avoid submit conflict
@@ -193,7 +238,8 @@ def _action_update_mount_and_restart(
         if not launchd.job_present(label_str):
             break
         time.sleep(1)
-    tart_args = vm.build_run_args(name, project.vm.network, mounts)
+    tart_args = vm.build_run_args(name, project.vm.network, mounts, headless=headless)
+    step(f"restarting VM {name} with updated mounts ({'headless' if headless else 'with display'})")
     launchd.submit(label_str, tart_args, log_path)
     _wait_for_guest_exec(name)
 
@@ -202,6 +248,8 @@ def _action_start(
     project: ProjectConfig,
     mounts: list[MountEntry],
     log_path: Path,
+    *,
+    headless: bool = True,
 ) -> None:
     """Submit the VM to launchd and wait for it to be running."""
     name = project.vm.name
@@ -214,7 +262,8 @@ def _action_start(
     # Remove any stale launchd registration for this label to avoid submit failure
     launchd.remove(label_str)
 
-    tart_args = vm.build_run_args(name, project.vm.network, mounts)
+    tart_args = vm.build_run_args(name, project.vm.network, mounts, headless=headless)
+    step(f"starting VM {name} ({'headless' if headless else 'with display'})")
     launchd.submit(label_str, tart_args, log_path)
     _wait_for_guest_exec(name)
 
@@ -223,6 +272,8 @@ def _action_attach_mount_and_start(
     project: ProjectConfig,
     mounts: list[MountEntry],
     log_path: Path,
+    *,
+    headless: bool = True,
 ) -> None:
     """Mount is already upserted before state read; just submit and wait."""
     name = project.vm.name
@@ -235,16 +286,15 @@ def _action_attach_mount_and_start(
     # Remove any stale launchd registration for this label to avoid submit failure
     launchd.remove(label_str)
 
-    tart_args = vm.build_run_args(name, project.vm.network, mounts)
+    tart_args = vm.build_run_args(name, project.vm.network, mounts, headless=headless)
+    step(f"attaching mount and starting VM {name} ({'headless' if headless else 'with display'})")
     launchd.submit(label_str, tart_args, log_path)
     _wait_for_guest_exec(name)
 
 
 def _action_nothing(project: ProjectConfig) -> None:
     """No-op — VM is already running with the correct mount."""
-    from remo_tart.console import console
-
-    console.print(
+    get_console().print(
         f"[dim]VM '{project.vm.name}' is already running with the correct mount. "
         "Nothing to do.[/dim]"
     )
@@ -264,6 +314,7 @@ def _build_inject_command(pub: str) -> str:
 def _configure_ssh(project: ProjectConfig, key_path: Path) -> None:
     """Configure SSH keypair, managed block, include directive, and authorized keys."""
     name = project.vm.name
+    step(f"configuring SSH for {name}")
 
     # 1. Generate keypair (idempotent).
     ssh.generate_keypair(key_path)
@@ -286,6 +337,7 @@ def _configure_ssh(project: ProjectConfig, key_path: Path) -> None:
             f"failed to install ssh public key into guest (exit {result.returncode})",
             hint=f"check {vm_log_path(name)} and ensure the VM is fully booted",
         )
+    done(f"SSH ready: ssh tart-{name}")
 
 
 # ---------------------------------------------------------------------------
@@ -293,32 +345,79 @@ def _configure_ssh(project: ProjectConfig, key_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _wait_for_guest_exec(vm_name: str, *, attempts: int = 90, interval: float = 2.0) -> None:
+def _wait_for_guest_exec(vm_name: str, *, attempts: int = 300, interval: float = 2.0) -> None:
     """Poll `tart exec true` until success. Raises RemoTartError on timeout.
 
-    This is stricter than `vm.is_running` — it waits for the guest agent to
-    respond, which is what downstream SSH key injection actually needs.
+    "Running" at the Tart/VZ layer just means the VM kernel started; macOS
+    inside still needs time to boot its launchd, network, and exec agent. We
+    surface intermediate signals (IP assignment, last log line) so the wait
+    isn't opaque.
     """
-    for _ in range(attempts):
-        # Quick readiness check — `tart exec <name> -- /usr/bin/true`
-        if not vm.is_running(vm_name):
-            time.sleep(interval)
-            continue
-        result = vm.exec_capture(vm_name, ["/usr/bin/true"])
-        if result.returncode == 0:
-            return
+    step(f"waiting for {vm_name} guest agent (macOS boot inside the VM)...")
+    get_console().print(
+        "[dim]   typical wait: 3-5 minutes (10+ on first boot). "
+        "Don't Ctrl-C — the connect step runs only after this finishes.[/dim]"
+    )
+    log_path = vm_log_path(vm_name)
+    last_ip: str | None = None
+    last_log_tail: str = ""
+    for i in range(attempts):
+        if vm.is_running(vm_name):
+            result = vm.exec_capture(vm_name, ["/usr/bin/true"])
+            if result.returncode == 0:
+                done(f"VM {vm_name} guest agent is ready")
+                return
+
+        elapsed = int((i + 1) * interval)
+        # IP assignment lands ~10-20s before the exec agent on macOS.
+        if last_ip is None:
+            ip = vm.ip_address(vm_name)
+            if ip:
+                last_ip = ip
+                get_console().print(f"[dim]  ...network up: {ip}[/dim]")
+
+        if elapsed and elapsed % 10 == 0:
+            running = "running" if vm.is_running(vm_name) else "VZ-still-booting"
+            tail = _last_log_line(log_path)
+            extra = ""
+            if tail and tail != last_log_tail:
+                last_log_tail = tail
+                extra = f' last log: "{tail[:80]}"'
+            get_console().print(f"[dim]  ...{vm_name} {running} ({elapsed}s elapsed){extra}[/dim]")
         time.sleep(interval)
     raise RemoTartError(
         f"timeout waiting for VM '{vm_name}' to be ready for exec",
-        hint=f"check {vm_log_path(vm_name)}",
+        hint=f"check {log_path}",
     )
+
+
+def _last_log_line(log_path: Path) -> str:
+    """Return the last non-empty line of a log file, or empty string."""
+    try:
+        with log_path.open("rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            if size == 0:
+                return ""
+            chunk = min(2048, size)
+            f.seek(size - chunk, 0)
+            data = f.read(chunk).decode("utf-8", errors="replace")
+        for line in reversed(data.splitlines()):
+            if line.strip():
+                return line.strip()
+    except OSError:
+        pass
+    return ""
 
 
 def _wait_for_stopped(name: str) -> None:
     """Poll until the VM has stopped, or raise RemoTartError on timeout."""
-    for _ in range(_WAIT_ATTEMPTS):
+    for i in range(_WAIT_ATTEMPTS):
         if not vm.is_running(name):
             return
+        elapsed = int((i + 1) * _WAIT_INTERVAL)
+        if elapsed and elapsed % 10 == 0:
+            get_console().print(f"[dim]  ...waiting for {name} to stop ({elapsed}s)[/dim]")
         time.sleep(_WAIT_INTERVAL)
     raise RemoTartError(
         f"timeout waiting for VM '{name}' to stop",
