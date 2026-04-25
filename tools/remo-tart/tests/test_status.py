@@ -157,6 +157,24 @@ def test_render_human_handles_none_and_empty_entries() -> None:
     assert "selected=null" in text
 
 
+def test_status_collect_with_umbrella_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    manifest_write(mount_manifest_path("alpha"), [MountEntry("alpha", repo)])
+
+    with (
+        patch("remo_tart.status.vm.exists", return_value=False),
+        patch("remo_tart.status.launchd.job_present", return_value=False),
+    ):
+        data = collect("alpha", repo, repo)
+    assert data["mounts"]["count"] == 1
+    assert data["mounts"]["entries"][0]["name"] == "alpha"
+    assert data["mounts"]["selected"] == "alpha"
+
+
 def test_render_json_is_valid_json() -> None:
     data = {
         "vm": {"name": "x", "exists": True, "running": True, "ip": "1.2.3.4"},

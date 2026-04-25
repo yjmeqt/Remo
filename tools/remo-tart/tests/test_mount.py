@@ -4,8 +4,6 @@ from pathlib import Path
 
 from remo_tart.mount import (
     MountEntry,
-    git_root_bridge_entry,
-    guest_bridge_script,
     manifest_prune_stale,
     manifest_read,
     manifest_remove,
@@ -118,12 +116,6 @@ def test_mount_name_for_path_slugifies(tmp_path: Path) -> None:
     assert mount_name_for_path("remo", p) == "remo-feature-branch"
 
 
-def test_git_root_bridge_entry() -> None:
-    e = git_root_bridge_entry("remo", Path("/r/.git"))
-    assert e.name == "remo-git-root"
-    assert e.host_path == Path("/r/.git")
-
-
 def test_parse_mount_spec_host_only(tmp_path: Path) -> None:
     (tmp_path / "proj").mkdir()
     e = parse_mount_spec("remo", str(tmp_path / "proj"))
@@ -135,32 +127,6 @@ def test_parse_mount_spec_with_explicit_name(tmp_path: Path) -> None:
     (tmp_path / "proj").mkdir()
     e = parse_mount_spec("remo", f"{tmp_path / 'proj'}:custom-name")
     assert e.name == "custom-name"
-
-
-def test_guest_bridge_script_contains_expected_markers() -> None:
-    script = guest_bridge_script(
-        [MountEntry("remo-feat", Path("/r"))],
-        git_root_name="remo-git-root",
-        guest_password="admin",
-    )
-    assert "#!/usr/bin/env bash" in script
-    assert "set -euo pipefail" in script
-    assert "My Shared Files/remo-git-root" in script
-    assert "remo-feat" in script
-
-
-def test_guest_bridge_script_excludes_git_root_entry() -> None:
-    script = guest_bridge_script(
-        [
-            MountEntry("remo-git-root", Path("/r/.git")),
-            MountEntry("remo-feat", Path("/r")),
-        ],
-        git_root_name="remo-git-root",
-        guest_password="admin",
-    )
-    # The git-root bridge itself must not be symlinked to its own .git subdir.
-    assert "My Shared Files/remo-git-root/.git" not in script
-    assert "My Shared Files/remo-feat/.git" in script
 
 
 def test_manifest_prune_does_not_create_missing_file(tmp_path: Path) -> None:

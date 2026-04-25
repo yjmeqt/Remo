@@ -1,4 +1,4 @@
-"""Mount manifest management, name derivation, and guest bridge script generation."""
+"""Mount manifest management and name derivation."""
 
 from __future__ import annotations
 
@@ -8,9 +8,6 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-
-# Guest-side shared folder root (tart virtiofs mount point).
-_SHARED_ROOT = "/Volumes/My Shared Files"
 
 
 @dataclass(frozen=True)
@@ -123,11 +120,6 @@ def mount_name_for_path(project_slug: str, host_path: Path) -> str:
     return f"{project_slug}-{worktree_slug}"
 
 
-def git_root_bridge_entry(project_slug: str, git_root: Path) -> MountEntry:
-    """Return a ``MountEntry`` for the git-root bridge mount."""
-    return MountEntry(f"{project_slug}-git-root", git_root)
-
-
 def parse_mount_spec(project_slug: str, spec: str) -> MountEntry:
     """Parse a mount spec of the form ``host[:name[:guest-root]]``.
 
@@ -142,87 +134,3 @@ def parse_mount_spec(project_slug: str, spec: str) -> MountEntry:
     else:
         name = mount_name_for_path(project_slug, host_path)
     return MountEntry(name, host_path)
-
-
-# ---------------------------------------------------------------------------
-# Guest bridge script
-# ---------------------------------------------------------------------------
-
-
-def guest_bridge_script(
-    entries: list[MountEntry],
-    git_root_name: str,
-    *,
-    guest_password: str,
-) -> str:
-    """Return a bash script that wires up ``.git`` symlinks inside the guest.
-
-    For each entry in *entries* that is NOT the git-root bridge itself, the
-    script creates a symlink:
-
-        /Volumes/My Shared Files/<name>/.git
-            → /Volumes/My Shared Files/<git_root_name>
-
-    This mirrors the logic of ``remo_tart_guest_git_root_bridge_script`` in
-    ``scripts/tart/common.sh`` (lines 418-450).
-    """
-    lines: list[str] = [
-        "#!/usr/bin/env bash",
-        "set -euo pipefail",
-        "",
-    ]
-
-    git_root_mount = f"{_SHARED_ROOT}/{git_root_name}"
-
-    for entry in entries:
-        if entry.name == git_root_name:
-            continue
-
-        guest_git_root = f"{_SHARED_ROOT}/{entry.name}/.git"
-        guest_bridge_source = git_root_mount
-        guest_git_parent = f"{_SHARED_ROOT}/{entry.name}"
-
-        lines += [
-            f"guest_git_root={_shell_quote(guest_git_root)}",
-            f"guest_bridge_source={_shell_quote(guest_bridge_source)}",
-            f"guest_git_parent={_shell_quote(guest_git_parent)}",
-            'if [[ -L "${guest_git_parent}" ]]; then',
-            (
-                f'    printf "%s\\n" {_shell_quote(guest_password)}'
-                f" | sudo -S rm -f {_shell_quote(guest_git_parent)}"
-            ),
-            "fi",
-            'if [[ -e "${guest_git_parent}" && ! -d "${guest_git_parent}" ]]; then',
-            '    echo "guest git parent exists and is not a directory: ${guest_git_parent}" >&2',
-            "    exit 1",
-            "fi",
-            'if [[ -L "${guest_git_root}" ]]; then',
-            '    current_target="$(readlink "${guest_git_root}")"',
-            '    if [[ "${current_target}" == "${guest_bridge_source}" ]]; then',
-            "        exit 0",
-            "    fi",
-            "fi",
-            'if [[ -e "${guest_git_root}" && ! -L "${guest_git_root}" ]]; then',
-            (
-                '    echo "guest git root bridge target already exists'
-                ' and is not a symlink: ${guest_git_root}" >&2'
-            ),
-            "    exit 1",
-            "fi",
-            (
-                f'printf "%s\\n" {_shell_quote(guest_password)}'
-                f" | sudo -S mkdir -p {_shell_quote(guest_git_parent)}"
-            ),
-            (
-                f'printf "%s\\n" {_shell_quote(guest_password)} | sudo -S ln -sfn'
-                f" {_shell_quote(guest_bridge_source)} {_shell_quote(guest_git_root)}"
-            ),
-            "",
-        ]
-
-    return "\n".join(lines)
-
-
-def _shell_quote(s: str) -> str:
-    """Minimal single-quote shell escaping for paths."""
-    return "'" + s.replace("'", "'\\''") + "'"
