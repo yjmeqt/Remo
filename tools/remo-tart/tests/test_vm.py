@@ -87,6 +87,25 @@ def test_build_run_args_softnet() -> None:
     assert "--net-softnet" in args
 
 
+def test_build_run_args_does_not_emit_rw_option() -> None:
+    """Tart's --dir options are ro/tag=, NOT rw. Adding :rw makes Tart reject
+    the directory share with VZErrorDomain Code=2."""
+    mounts = [MountEntry("remo", Path("/r"))]
+    args = vm.build_run_args("remo-dev", network="shared", mounts=mounts)
+    assert "remo:/r" in args
+    assert not any(":rw" in a for a in args)
+
+
+def test_build_run_args_headless_by_default() -> None:
+    args = vm.build_run_args("remo-dev", network="shared", mounts=[])
+    assert "--no-graphics" in args
+
+
+def test_build_run_args_with_display_omits_no_graphics() -> None:
+    args = vm.build_run_args("remo-dev", network="shared", mounts=[], headless=False)
+    assert "--no-graphics" not in args
+
+
 @patch("subprocess.run")
 def test_create_invokes_tart_clone(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=0, stdout="", stderr="")
