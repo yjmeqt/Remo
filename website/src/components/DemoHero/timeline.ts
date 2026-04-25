@@ -5,41 +5,54 @@ export interface TerminalLine {
   text: string;
 }
 
+export type AccentColorName =
+  | "blue"
+  | "purple"
+  | "red"
+  | "green"
+  | "orange"
+  | "pink"
+  | "yellow"
+  | "mint"
+  | "teal";
+
+export type PhoneRoute = "home" | "uikit" | "activity" | "settings";
+
+export type GridTab = "feed" | "items";
+
+export type ScrollPosition = "top" | "middle" | "bottom";
+
+/**
+ * Side-effects a `command` step triggers on the mock phone.
+ * Applied with a small delay after the terminal line appears so the UI
+ * feels like a real RPC round-trip.
+ */
+export type PhoneAction =
+  | { kind: "toast"; message: string }
+  | { kind: "setAccentColor"; color: AccentColorName }
+  | { kind: "confetti" }
+  | { kind: "navigate"; route: PhoneRoute }
+  | { kind: "selectGridTab"; tab: GridTab }
+  | { kind: "gridScroll"; position: ScrollPosition }
+  | { kind: "feedAppend"; title: string; subtitle: string };
+
 export interface DemoStep {
   time: number;
   terminal: TerminalLine;
+  /** If set, the mock phone applies this effect ~`phoneActionDelay` after `time`. */
+  phoneAction?: PhoneAction;
 }
 
-// =============================================================================
-// Demo Timeline
-//
-// Two phases:
-//   1. Code phase (0 – VIDEO_PHASE_START): terminal-only, agent explores code
-//      and registers capabilities. iPhone is blank (videoTime = -1).
-//   2. Live app phase (VIDEO_PHASE_START onwards): video plays continuously
-//      while terminal commands appear synced to the recording.
-//
-// The video advances as: videoTime = (elapsed - VIDEO_PHASE_START) + VIDEO_OFFSET
-// VIDEO_OFFSET skips the recording startup idle period so the video starts right
-// when capabilities fire. Terminal step times = VIDEO_PHASE_START + elapsed_s
-// where elapsed_s comes from demo-timestamps.json.
-// =============================================================================
+/** Seconds the phone lags behind the matching command line — feels like an RPC. */
+export const PHONE_ACTION_DELAY = 0.45;
 
-/** Terminal time (seconds) when the video appears and starts playing */
-export const VIDEO_PHASE_START = 10;
+/** Seconds before the iPhone screen lights up at the start of the demo. */
+export const PHONE_BOOT_TIME = 10;
 
-/** Seconds into the video where capabilities start (recording startup delay) */
-export const VIDEO_OFFSET = 1;
-
-/**
- * Shorthand for live-app phase step times.
- * V + recording_elapsed_s = terminal time when that step appears,
- * and the video will be at VIDEO_OFFSET + recording_elapsed_s.
- */
-const V = VIDEO_PHASE_START;
+const V = PHONE_BOOT_TIME;
 
 export const DEMO_STEPS: DemoStep[] = [
-  // === CODE PHASE (terminal only, iPhone blank) ===
+  // === CODE PHASE (terminal only, iPhone screen still dark) ===
   {
     time: 0,
     terminal: {
@@ -90,164 +103,154 @@ export const DEMO_STEPS: DemoStep[] = [
     },
   },
 
-  // === LIVE APP PHASE (terminal + continuous video) ===
-  // iPhone appears at VIDEO_PHASE_START. Video starts at VIDEO_OFFSET
-  // (skipping the idle recording startup period).
-  //
-  // Recording timestamps (2026-03-28):
-  //   ui.toast:               0.02
-  //   observation 01:         2.63
-  //   ui.setAccentColor:      3.18
-  //   observation 02:         4.78
-  //   ui.confetti:            5.33
-  //   observation 03:         8.42
-  //   navigate (uikit):       8.97
-  //   observation 04:         10.61
-  //   grid.tab.select items:  11.16
-  //   grid.scroll.vertical:   12.22
-  //   observation 05:         13.28
-  //   grid.tab.select feed:   13.83
-  //   grid.feed.append:       14.89
-  //   observation 06:         15.95
+  // === LIVE APP PHASE (terminal + simulated phone) ===
+  // Times are absolute seconds. Phone effect lands at time + PHONE_ACTION_DELAY.
 
-  // -- Toast (recording: 0.02, observation at 2.63) --
+  // -- Toast --
   {
-    time: V + 0.02,
+    time: V + 0.0,
     terminal: {
       type: "command",
       text: '❯ remo call ui.toast \'{"message":"Features verified ✓"}\'',
     },
+    phoneAction: { kind: "toast", message: "Features verified ✓" },
   },
   {
-    time: V + 4.3,
+    time: V + 1.0,
     terminal: { type: "result", text: '✓ { "status": "ok" }' },
   },
   {
-    time: V + 6.39,
+    time: V + 1.7,
     terminal: {
       type: "claude",
       text: "Toast rendered in the running app. Continuing...",
     },
   },
 
-  // -- Accent Color (recording: 6.93, observation at 8.53) --
+  // -- Confetti --
   {
-    time: V + 6.93,
-    terminal: {
-      type: "command",
-      text: '❯ remo call ui.setAccentColor \'{"color":"purple"}\'',
-    },
-  },
-  {
-    time: V + 7.4,
-    terminal: { type: "result", text: '✓ { "color": "purple" }' },
-  },
-  {
-    time: V + 8.53,
-    terminal: {
-      type: "claude",
-      text: "Accent color changed to purple.",
-    },
-  },
-
-  // -- Confetti (recording: 5.33, observation at 8.42) --
-  {
-    time: V + 5.33,
+    time: V + 2.4,
     terminal: { type: "command", text: "❯ remo call ui.confetti '{}'" },
+    phoneAction: { kind: "confetti" },
   },
   {
-    time: V + 5.75,
+    time: V + 2.9,
     terminal: { type: "result", text: '✓ { "status": "ok" }' },
   },
   {
-    time: V + 8.42,
+    time: V + 4.6,
     terminal: {
       type: "claude",
       text: "Confetti animation triggered cleanly.",
     },
   },
+
+  // -- Accent color --
   {
-    time: V + 8.7,
+    time: V + 5.3,
+    terminal: {
+      type: "command",
+      text: '❯ remo call ui.setAccentColor \'{"color":"purple"}\'',
+    },
+    phoneAction: { kind: "setAccentColor", color: "purple" },
+  },
+  {
+    time: V + 5.8,
+    terminal: { type: "result", text: '✓ { "color": "purple" }' },
+  },
+  {
+    time: V + 6.7,
     terminal: {
       type: "claude",
-      text: "UI effects working. Checking the Grid tab...",
+      text: "Accent color changed to purple. Checking the Grid tab...",
     },
   },
 
-  // -- Navigate to Grid (recording: 8.97, observation at 10.61) --
+  // -- Navigate to Grid --
   {
-    time: V + 8.97,
+    time: V + 7.4,
     terminal: {
       type: "command",
       text: '❯ remo call navigate \'{"route":"uikit"}\'',
     },
+    phoneAction: { kind: "navigate", route: "uikit" },
   },
   {
-    time: V + 9.45,
+    time: V + 7.9,
     terminal: { type: "result", text: '✓ { "status": "ok" }' },
   },
   {
-    time: V + 10.61,
+    time: V + 8.8,
     terminal: {
       type: "claude",
       text: "Grid tab is visible. Exercising scoped capabilities now.",
     },
   },
 
-  // -- Grid capabilities (recording: 11.16 – 15.95) --
+  // -- Switch to Items, scroll --
   {
-    time: V + 11.16,
+    time: V + 9.5,
     terminal: {
       type: "command",
       text: '❯ remo call grid.tab.select \'{"id":"items"}\'',
     },
+    phoneAction: { kind: "selectGridTab", tab: "items" },
   },
   {
-    time: V + 11.6,
+    time: V + 9.95,
     terminal: { type: "result", text: '✓ { "selectedTab": { "id": "items" } }' },
   },
   {
-    time: V + 12.22,
+    time: V + 10.6,
     terminal: {
       type: "command",
       text: '❯ remo call grid.scroll.vertical \'{"position":"bottom"}\'',
     },
+    phoneAction: { kind: "gridScroll", position: "bottom" },
   },
   {
-    time: V + 12.65,
+    time: V + 11.05,
     terminal: { type: "result", text: '✓ { "position": "bottom", "tab": "items" }' },
   },
   {
-    time: V + 13.28,
+    time: V + 11.95,
     terminal: {
       type: "claude",
       text: "Items tab reached the expected scroll position.",
     },
   },
+
+  // -- Back to Feed, append --
   {
-    time: V + 13.83,
+    time: V + 12.6,
     terminal: {
       type: "command",
       text: '❯ remo call grid.tab.select \'{"id":"feed"}\'',
     },
+    phoneAction: { kind: "selectGridTab", tab: "feed" },
   },
   {
-    time: V + 14.25,
+    time: V + 13.05,
     terminal: { type: "result", text: '✓ { "selectedTab": { "id": "feed" } }' },
   },
   {
-    time: V + 14.89,
+    time: V + 13.7,
     terminal: {
       type: "command",
       text: '❯ remo call grid.feed.append \'{"title":"Ship It","subtitle":"Live from Remo"}\'',
     },
+    phoneAction: {
+      kind: "feedAppend",
+      title: "Ship It",
+      subtitle: "Live from Remo",
+    },
   },
   {
-    time: V + 15.3,
+    time: V + 14.15,
     terminal: { type: "result", text: '✓ { "status": "ok", "tab": "feed" }' },
   },
   {
-    time: V + 15.95,
+    time: V + 15.0,
     terminal: {
       type: "claude",
       text: "Feed updated with the new entry.",
@@ -256,7 +259,7 @@ export const DEMO_STEPS: DemoStep[] = [
 
   // -- Summary --
   {
-    time: V + 17,
+    time: V + 16.2,
     terminal: {
       type: "claude",
       text: "Capability registration and runtime control are working end to end.",
@@ -264,5 +267,5 @@ export const DEMO_STEPS: DemoStep[] = [
   },
 ];
 
-// Last step at V+17 = 27s, plus 3s viewing buffer + 2s reset fade
-export const DEMO_TOTAL_DURATION = 32;
+// Last step at V+16.2 = 26.2s, plus ~3s viewing buffer + 2s reset fade.
+export const DEMO_TOTAL_DURATION = 31;
