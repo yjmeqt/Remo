@@ -147,6 +147,24 @@ def test_exec_capture_returns_completed_process(run: MagicMock) -> None:
 
 
 @patch("subprocess.run")
+def test_exec_capture_does_not_pass_double_dash_separator(run: MagicMock) -> None:
+    """``tart exec`` does not accept ``--`` as a separator — it treats ``--``
+    as a command name and fails with ``executable file not found``."""
+    run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    vm.exec_capture("remo-dev", ["echo", "hi"])
+    (called_argv,) = run.call_args[0]
+    assert "--" not in called_argv
+
+
+@patch("subprocess.run")
+def test_exec_interactive_does_not_pass_double_dash_separator(run: MagicMock) -> None:
+    run.return_value = MagicMock(returncode=0)
+    vm.exec_interactive("remo-dev", ["sh"])
+    (called_argv,) = run.call_args[0]
+    assert "--" not in called_argv
+
+
+@patch("subprocess.run")
 def test_ip_address_returns_stdout(run: MagicMock) -> None:
     run.return_value = MagicMock(returncode=0, stdout="10.0.0.2\n", stderr="")
     assert vm.ip_address("remo-dev") == "10.0.0.2"

@@ -88,7 +88,7 @@ def ip_address(name: str) -> str | None:
 
     # Fallback: ask the guest directly
     fallback = subprocess.run(
-        ["tart", "exec", name, "--", "/usr/bin/ipconfig", "getifaddr", "en0"],
+        ["tart", "exec", name, "/usr/bin/ipconfig", "getifaddr", "en0"],
         capture_output=True,
         text=True,
         check=False,
@@ -152,9 +152,13 @@ def exec_capture(name: str, argv: list[str]) -> subprocess.CompletedProcess:  # 
 
     Returns the :class:`subprocess.CompletedProcess` without raising on
     non-zero exit codes — callers are responsible for checking ``returncode``.
+
+    Note: ``tart exec`` syntax is ``tart exec <vm> <cmd> [args...]`` —
+    there is NO ``--`` separator (tart treats ``--`` as a command name and
+    fails with ``executable file not found``).
     """
     return subprocess.run(
-        ["tart", "exec", name, "--", *argv],
+        ["tart", "exec", name, *argv],
         capture_output=True,
         text=True,
         check=False,
@@ -164,10 +168,11 @@ def exec_capture(name: str, argv: list[str]) -> subprocess.CompletedProcess:  # 
 def exec_interactive(name: str, argv: list[str]) -> int:
     """Run *argv* inside *name* with an inherited tty.
 
-    Returns the exit code of the remote command.
+    Returns the exit code of the remote command.  See :func:`exec_capture`
+    for the note about ``--``.
     """
     result = subprocess.run(
-        ["tart", "exec", name, "--", *argv],
+        ["tart", "exec", name, *argv],
         check=False,
     )
     return result.returncode

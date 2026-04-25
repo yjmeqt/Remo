@@ -301,13 +301,22 @@ def _action_nothing(project: ProjectConfig) -> None:
 
 
 def _build_inject_command(pub: str) -> str:
-    """Build a shell command to idempotently inject a public key into authorized_keys."""
+    """Build a shell command to idempotently inject a public key into authorized_keys.
+
+    Uses ``set -e`` + an explicit ``grep || append`` pattern so the overall
+    exit code is unambiguous (0 = success).  The previous implementation
+    chained ``&& ... || ... && ...`` which has surprising left-associative
+    precedence and produced exit-1 even when the key was already present.
+    """
     quoted_pub = shlex.quote(pub)
     return (
-        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
-        f"grep -Fqx -- {quoted_pub} ~/.ssh/authorized_keys 2>/dev/null || "
-        f"printf '%s\\n' {quoted_pub} >> ~/.ssh/authorized_keys && "
-        "chmod 600 ~/.ssh/authorized_keys"
+        "set -e; "
+        "mkdir -p ~/.ssh; "
+        "chmod 700 ~/.ssh; "
+        "touch ~/.ssh/authorized_keys; "
+        "chmod 600 ~/.ssh/authorized_keys; "
+        f"grep -Fqx -- {quoted_pub} ~/.ssh/authorized_keys "
+        f"|| printf '%s\\n' {quoted_pub} >> ~/.ssh/authorized_keys"
     )
 
 
@@ -333,8 +342,11 @@ def _configure_ssh(project: ProjectConfig, key_path: Path) -> None:
     inject_cmd = _build_inject_command(pub)
     result = vm.exec_capture(name, ["sh", "-c", inject_cmd])
     if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        stdout = (result.stdout or "").strip()
+        detail = stderr or stdout or "(no output)"
         raise RemoTartError(
-            f"failed to install ssh public key into guest (exit {result.returncode})",
+            f"failed to install ssh public key into guest (exit {result.returncode}): {detail}",
             hint=f"check {vm_log_path(name)} and ensure the VM is fully booted",
         )
     done(f"SSH ready: ssh tart-{name}")
