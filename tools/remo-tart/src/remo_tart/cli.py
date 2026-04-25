@@ -63,22 +63,30 @@ def _resolve_primary_mount(
 
     This is a CLI-specific helper — not exported from mount.py.
     """
-    resolved_cwd = cwd.resolve()
+    if not entries:
+        raise RemoTartError(
+            "no mounts attached to this VM",
+            hint="run `remo-tart use` from this worktree to attach it",
+        )
+    cwd_resolved = cwd.resolve()
     for entry in entries:
         try:
-            if entry.host_path.resolve() == resolved_cwd:
+            if entry.host_path.resolve() == cwd_resolved:
                 return entry
         except OSError:
-            pass
-    # Fallback: return the first non-git-root entry, or just the first
-    for entry in entries:
-        if not entry.name.endswith("-git-root"):
-            return entry
-    if entries:
-        return entries[0]
-    from remo_tart.mount import MountEntry
-
-    return MountEntry(name="unknown", host_path=cwd)
+            continue
+    # No exact match — fall back to first non-git-root entry, but warn
+    non_bridge = [e for e in entries if not e.name.endswith("-git-root")]
+    if non_bridge:
+        get_console().print(
+            f"[yellow]warning:[/yellow] cwd {cwd} does not match any mount; "
+            f"using mount '{non_bridge[0].name}'"
+        )
+        return non_bridge[0]
+    raise RemoTartError(
+        f"cwd {cwd} is not a recorded mount and no non-bridge mount exists",
+        hint="run `remo-tart use` from this worktree to attach it",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +233,8 @@ def ssh(ctx: click.Context, ssh_args: tuple[str, ...]) -> None:
             f"vm is not running: {name}",
             hint="run `remo-tart up` to start and connect, or `remo-tart start` to only start",
         )
-    code = vm.exec_interactive(name, list(ssh_args))
+    argv = list(ssh_args) if ssh_args else ["/bin/zsh", "-l"]
+    code = vm.exec_interactive(name, argv)
     ctx.exit(code)
 
 
@@ -243,7 +252,6 @@ def destroy(ctx: click.Context, force: bool) -> None:
         confirmed = click.confirm(f"Destroy VM '{name}'? This cannot be undone.", default=False)
         if not confirmed:
             ctx.exit(1)
-            return
     label = launchd.label(name)
     launchd.remove(label)
     if vm.exists(name):

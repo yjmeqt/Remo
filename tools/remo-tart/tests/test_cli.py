@@ -286,6 +286,23 @@ def test_connect_cli_default_mode(
     connect_cli.assert_called_once()
 
 
+@patch("remo_tart.cli.vm.is_running", return_value=True)
+@patch("remo_tart.cli.mount.manifest_read", return_value=[])
+def test_connect_raises_when_manifest_is_empty(
+    manifest_read: MagicMock,
+    is_running: MagicMock,
+    fake_repo: Path,
+) -> None:
+    from remo_tart.errors import RemoTartError
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["connect", "vscode"])
+    assert result.exit_code == 1
+    # RemoTartError propagates as the exception when Rich console swallows output
+    assert isinstance(result.exception, RemoTartError)
+    assert "no mounts" in str(result.exception).lower()
+
+
 # ---------------------------------------------------------------------------
 # status subcommand
 # ---------------------------------------------------------------------------
@@ -378,6 +395,22 @@ def test_ssh_errors_when_not_running(is_running: MagicMock, fake_repo: Path) -> 
     runner = CliRunner()
     result = runner.invoke(main, ["ssh"])
     assert result.exit_code == 1
+
+
+@patch("remo_tart.cli.vm.exec_interactive")
+@patch("remo_tart.cli.vm.is_running", return_value=True)
+def test_ssh_with_no_args_defaults_to_interactive_zsh(
+    is_running: MagicMock,
+    exec_interactive: MagicMock,
+    fake_repo: Path,
+) -> None:
+    exec_interactive.return_value = 0
+    runner = CliRunner()
+    result = runner.invoke(main, ["ssh"])
+    assert result.exit_code == 0
+    exec_interactive.assert_called_once()
+    (_called_vm, called_argv) = exec_interactive.call_args[0]
+    assert called_argv == ["/bin/zsh", "-l"]
 
 
 # ---------------------------------------------------------------------------
