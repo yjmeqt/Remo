@@ -1,7 +1,6 @@
 """remo-tart command-line entry point.
 
-PR 2: every subcommand calls into native Python modules.  The bash shim
-(dispatch.py / scripts/tart/*.sh) is no longer invoked from here.
+Every subcommand calls into native Python modules.
 """
 
 from __future__ import annotations
@@ -20,6 +19,7 @@ from remo_tart.console import get_console, render_error
 from remo_tart.errors import RemoTartError
 from remo_tart.mount import manifest_read, mount_name_for_path
 from remo_tart.paths import (
+    find_repo_root,
     mount_manifest_path,
     ssh_include_path,
     ssh_key_path,
@@ -38,12 +38,9 @@ _GUEST_USER = "admin"
 
 def _load_cfg(ctx: click.Context):  # type: ignore[return]
     """Resolve the repo root and load .tart/project.toml. Used by every subcommand."""
-    from remo_tart import config, dispatch
+    from remo_tart import config
 
-    try:
-        repo = dispatch.find_repo_root()
-    except RemoTartError:
-        raise
+    repo = find_repo_root()
     project = config.load(repo)
     ctx.obj["repo_root"] = repo
     ctx.obj["project"] = project

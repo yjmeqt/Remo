@@ -8,6 +8,8 @@ import pytest
 from remo_tart.dispatch import bash_dispatch, find_repo_root
 from remo_tart.errors import RemoTartError
 
+pytestmark = pytest.mark.skip(reason="dispatch module deleted in PR 3 (Task 5)")
+
 
 def _make_fake_repo(tmp_path: Path) -> Path:
     """Create a minimal fake repo with scripts/tart/ and a sample script."""

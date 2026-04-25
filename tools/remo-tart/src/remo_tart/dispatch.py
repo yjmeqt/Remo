@@ -1,26 +1,17 @@
-"""Locate the repo and forward argv to scripts/tart/*.sh (PR 1 shim)."""
+"""Legacy bash dispatcher. Slated for deletion in PR 3 Task 5.
+
+`find_repo_root` lives in `remo_tart.paths` now; this re-export keeps the
+existing `test_dispatch.py` importable until that test file is also deleted.
+"""
 
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 from remo_tart.errors import RemoTartError
+from remo_tart.paths import find_repo_root  # re-export for backward compat
 
-
-def find_repo_root(start: Path | None = None) -> Path:
-    """Walk upward from ``start`` (default cwd) until we find scripts/tart/.
-
-    Raises ``RemoTartError`` if not found.
-    """
-    current = (start or Path.cwd()).resolve()
-    for candidate in [current, *current.parents]:
-        if (candidate / "scripts" / "tart").is_dir():
-            return candidate
-    raise RemoTartError(
-        "unable to find the Remo repo root from the current working directory",
-        hint="run remo-tart from inside a Remo checkout (scripts/tart/ must exist)",
-    )
+__all__ = ["bash_dispatch", "find_repo_root"]
 
 
 def bash_dispatch(
