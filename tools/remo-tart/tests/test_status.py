@@ -165,7 +165,10 @@ def test_status_collect_with_umbrella_manifest(
     repo.mkdir()
     manifest_write(mount_manifest_path("alpha"), [MountEntry("alpha", repo)])
 
-    with patch("remo_tart.status.vm.exists", return_value=False):
+    with (
+        patch("remo_tart.status.vm.exists", return_value=False),
+        patch("remo_tart.status.launchd.job_present", return_value=False),
+    ):
         data = collect("alpha", repo, repo)
     assert data["mounts"]["count"] == 1
     assert data["mounts"]["entries"][0]["name"] == "alpha"
