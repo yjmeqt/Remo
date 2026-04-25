@@ -102,13 +102,29 @@ def main(ctx: click.Context, verbose: int) -> None:
 
 @main.command()
 @click.argument("mode", type=click.Choice(["cli", "vscode", "cursor"]), default="cli")
+@click.option(
+    "--display",
+    is_flag=True,
+    help="Boot with a UI window. Triggers a restart if VM is currently headless.",
+)
 @click.pass_context
-def up(ctx: click.Context, mode: str) -> None:
-    """Attach the current worktree, ensure the VM is running, and connect."""
+def up(ctx: click.Context, mode: str, display: bool) -> None:
+    """Attach the current worktree, ensure the VM is running, and connect.
+
+    By default the VM runs headless (no UI window). Use ``--display`` if you
+    need to see the VM screen (rarely needed; macOS guest is normally driven
+    via SSH / Remote SSH editors).
+    """
+    from remo_tart.console import done as _done
+    from remo_tart.console import step as _step
+
     repo, project = _load_cfg(ctx)
     cwd = Path.cwd()
-    outcome = worktree.ensure_attached(repo, project, cwd)
+    _step(f"up({mode}) for worktree {cwd}")
+    outcome = worktree.ensure_attached(repo, project, cwd, headless=not display)
+    _done(f"actions: {', '.join(a.name for a in outcome.actions)}")
     name = project.vm.name
+    _step(f"connecting via {mode}")
     if mode == "cli":
         code = _connect.connect_cli(name, project.vm.guest_user)
     elif mode == "vscode":
@@ -136,8 +152,13 @@ def use(ctx: click.Context, worktree_path: str | None) -> None:
 
 
 @main.command()
+@click.option(
+    "--display",
+    is_flag=True,
+    help="Boot with a UI window. Default is headless.",
+)
 @click.pass_context
-def start(ctx: click.Context) -> None:
+def start(ctx: click.Context, display: bool) -> None:
     """Start the VM without changing mounts or connecting."""
     _repo, project = _load_cfg(ctx)
     name = project.vm.name
@@ -154,7 +175,7 @@ def start(ctx: click.Context) -> None:
     # Truncate log to avoid confusion with stale output
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text("")
-    tart_args = vm.build_run_args(name, project.vm.network, mounts)
+    tart_args = vm.build_run_args(name, project.vm.network, mounts, headless=not display)
     launchd.submit(label, tart_args, log_path)
 
 
