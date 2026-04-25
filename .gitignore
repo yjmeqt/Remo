@@ -5,7 +5,6 @@
 # Worktrees
 .worktrees/
 .tart/*
-!.tart/project.sh
 !.tart/project.toml
 !.tart/provision.sh
 !.tart/verify-worktree.sh
