@@ -1,5 +1,8 @@
+"""Tests for cli.py — PR 2 (native Python modules, no bash_dispatch)."""
+
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,6 +10,52 @@ from click.testing import CliRunner
 
 from remo_tart import __version__
 from remo_tart.cli import main
+from remo_tart.state import Action
+
+# ---------------------------------------------------------------------------
+# Minimal valid project.toml used by all subcommand tests
+# ---------------------------------------------------------------------------
+
+_VALID_TOML = """
+[project]
+slug = "remo"
+
+[vm]
+name = "remo-dev"
+base_image = "img"
+cpu = 1
+memory_gb = 1
+network = "shared"
+
+[packs]
+enabled = ["ios"]
+
+[scripts]
+provision = ".tart/provision.sh"
+verify_worktree = ".tart/verify-worktree.sh"
+"""
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # The "repo" needs scripts/tart/ to satisfy find_repo_root
+    (tmp_path / "scripts" / "tart").mkdir(parents=True)
+    # And a valid project.toml
+    (tmp_path / ".tart").mkdir()
+    (tmp_path / ".tart" / "project.toml").write_text(_VALID_TOML)
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Tests preserved from PR 1 (structure-level)
+# ---------------------------------------------------------------------------
 
 
 def test_help_does_not_crash() -> None:
@@ -41,107 +90,392 @@ def test_all_subcommands_appear_in_help() -> None:
         assert cmd in result.output, f"{cmd} missing from --help"
 
 
-@pytest.fixture
-def mock_dispatch() -> MagicMock:
-    with patch("remo_tart.cli.bash_dispatch") as m:
-        m.return_value = MagicMock(returncode=0)
-        yield m
+def test_run_returns_child_exit_code(monkeypatch: pytest.MonkeyPatch, fake_repo: Path) -> None:
+    from remo_tart.cli import _run
+
+    with (
+        patch("remo_tart.cli._status.collect") as mock_collect,
+        patch("remo_tart.cli._status.render_human") as mock_render,
+    ):
+        mock_collect.return_value = {}
+        mock_render.return_value = "vm: ..."
+        monkeypatch.setattr("sys.argv", ["remo-tart", "status"])
+        code = _run()
+    assert code == 0
 
 
-def test_use_forwards_to_use_worktree_script(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["use"])
-    assert result.exit_code == 0
-    mock_dispatch.assert_called_once()
-    assert mock_dispatch.call_args.args[0] == "use-worktree-dev-vm.sh"
+# ---------------------------------------------------------------------------
+# up subcommand
+# ---------------------------------------------------------------------------
 
 
-def test_connect_forwards_mode(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["connect", "vscode"])
-    assert result.exit_code == 0
-    mock_dispatch.assert_called_once()
-    assert mock_dispatch.call_args.args[0] == "connect-dev-vm.sh"
-    assert "vscode" in mock_dispatch.call_args.args[1]
+@patch("remo_tart.cli._connect.connect_vscode")
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_up_vscode_invokes_worktree_then_connect(
+    ensure: MagicMock,
+    connect_vscode: MagicMock,
+    fake_repo: Path,
+) -> None:
+    from remo_tart.mount import MountEntry
 
-
-def test_connect_defaults_to_cli(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["connect"])
-    assert result.exit_code == 0
-    assert "cli" in mock_dispatch.call_args.args[1]
-
-
-def test_status_forwards(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["status"])
-    assert result.exit_code == 0
-    assert mock_dispatch.call_args.args[0] == "status-dev-vm.sh"
-
-
-def test_doctor_forwards(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["doctor"])
-    assert result.exit_code == 0
-    assert mock_dispatch.call_args.args[0] == "doctor-dev-vm.sh"
-
-
-def test_ssh_forwards_with_passthrough_args(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["ssh", "--", "uname", "-a"])
-    assert result.exit_code == 0
-    assert mock_dispatch.call_args.args[0] == "ssh-dev-vm.sh"
-    assert "uname" in mock_dispatch.call_args.args[1]
-    assert "-a" in mock_dispatch.call_args.args[1]
-
-
-def test_destroy_forwards_force_flag(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["destroy", "--force"])
-    assert result.exit_code == 0
-    assert mock_dispatch.call_args.args[0] == "destroy-dev-vm.sh"
-    assert "--force" in mock_dispatch.call_args.args[1]
-
-
-def test_clean_worktree_forwards_path(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["clean-worktree", "/tmp/foo"])
-    assert result.exit_code == 0
-    assert mock_dispatch.call_args.args[0] == "clean-worktree-dev-vm.sh"
-    assert "/tmp/foo" in mock_dispatch.call_args.args[1]
-
-
-def test_bootstrap_forwards(mock_dispatch: MagicMock) -> None:
-    runner = CliRunner()
-    result = runner.invoke(main, ["bootstrap"])
-    assert result.exit_code == 0
-    assert mock_dispatch.call_args.args[0] == "bootstrap-dev-vm.sh"
-
-
-def test_up_forwards_to_use_and_connect(mock_dispatch: MagicMock) -> None:
+    primary = MountEntry(name="remo-feat", host_path=fake_repo)
+    ensure.return_value = MagicMock(
+        primary=primary,
+        actions=(Action.CREATE,),
+    )
+    connect_vscode.return_value = 0
     runner = CliRunner()
     result = runner.invoke(main, ["up", "vscode"])
     assert result.exit_code == 0
-    # up is approximated in PR 1 as use-worktree + connect
-    calls = [c.args[0] for c in mock_dispatch.call_args_list]
-    assert "use-worktree-dev-vm.sh" in calls
-    assert "connect-dev-vm.sh" in calls
+    ensure.assert_called_once()
+    connect_vscode.assert_called_once()
 
 
-def test_up_stops_on_use_failure(mock_dispatch: MagicMock) -> None:
-    mock_dispatch.side_effect = [MagicMock(returncode=1)]
+@patch("remo_tart.cli._connect.connect_cli")
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_up_cli_mode_calls_connect_cli(
+    ensure: MagicMock,
+    connect_cli: MagicMock,
+    fake_repo: Path,
+) -> None:
+    from remo_tart.mount import MountEntry
+
+    primary = MountEntry(name="remo-main", host_path=fake_repo)
+    ensure.return_value = MagicMock(primary=primary, actions=(Action.NOTHING,))
+    connect_cli.return_value = 0
     runner = CliRunner()
     result = runner.invoke(main, ["up"])
-    assert result.exit_code == 1
-    # only use-worktree was called; connect skipped
-    assert mock_dispatch.call_count == 1
+    assert result.exit_code == 0
+    connect_cli.assert_called_once()
 
 
-def test_run_returns_child_exit_code(
-    monkeypatch: pytest.MonkeyPatch, mock_dispatch: MagicMock
+@patch("remo_tart.cli._connect.connect_cursor")
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_up_cursor_mode_calls_connect_cursor(
+    ensure: MagicMock,
+    connect_cursor: MagicMock,
+    fake_repo: Path,
 ) -> None:
-    from remo_tart.cli import _run
+    from remo_tart.mount import MountEntry
 
-    mock_dispatch.return_value = MagicMock(returncode=42)
-    monkeypatch.setattr("sys.argv", ["remo-tart", "status"])
-    assert _run() == 42
+    primary = MountEntry(name="remo-main", host_path=fake_repo)
+    ensure.return_value = MagicMock(primary=primary, actions=(Action.NOTHING,))
+    connect_cursor.return_value = 0
+    runner = CliRunner()
+    result = runner.invoke(main, ["up", "cursor"])
+    assert result.exit_code == 0
+    connect_cursor.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# use subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_use_calls_ensure_attached(ensure: MagicMock, fake_repo: Path) -> None:
+    from remo_tart.mount import MountEntry
+
+    primary = MountEntry(name="remo-main", host_path=fake_repo)
+    ensure.return_value = MagicMock(primary=primary, actions=(Action.NOTHING,))
+    runner = CliRunner()
+    result = runner.invoke(main, ["use"])
+    assert result.exit_code == 0
+    ensure.assert_called_once()
+
+
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_use_with_explicit_path(ensure: MagicMock, fake_repo: Path) -> None:
+    from remo_tart.mount import MountEntry
+
+    primary = MountEntry(name="remo-wt", host_path=fake_repo)
+    ensure.return_value = MagicMock(primary=primary, actions=(Action.ATTACH_MOUNT_AND_START,))
+    runner = CliRunner()
+    result = runner.invoke(main, ["use", str(fake_repo)])
+    assert result.exit_code == 0
+    ensure.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# start subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli.launchd.submit")
+@patch("remo_tart.cli.launchd.remove")
+@patch("remo_tart.cli.vm.build_run_args")
+@patch("remo_tart.cli.vm.exists")
+def test_start_submits_to_launchd(
+    vm_exists: MagicMock,
+    build_args: MagicMock,
+    launchd_remove: MagicMock,
+    launchd_submit: MagicMock,
+    fake_repo: Path,
+) -> None:
+    vm_exists.return_value = True
+    build_args.return_value = ["run", "remo-dev"]
+    runner = CliRunner()
+    result = runner.invoke(main, ["start"])
+    assert result.exit_code == 0
+    launchd_remove.assert_called_once()
+    launchd_submit.assert_called_once()
+
+
+@patch("remo_tart.cli.vm.exists")
+def test_start_raises_when_vm_missing(vm_exists: MagicMock, fake_repo: Path) -> None:
+    vm_exists.return_value = False
+    runner = CliRunner()
+    result = runner.invoke(main, ["start"])
+    assert result.exit_code == 1
+    assert "vm does not exist" in result.output or result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# connect subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli._connect.connect_vscode")
+@patch("remo_tart.cli.vm.is_running")
+@patch("remo_tart.cli.mount.manifest_read")
+def test_connect_vscode_when_running(
+    manifest_read: MagicMock,
+    is_running: MagicMock,
+    connect_vscode: MagicMock,
+    fake_repo: Path,
+) -> None:
+    from remo_tart.mount import MountEntry
+
+    is_running.return_value = True
+    primary = MountEntry(name="remo-main", host_path=fake_repo)
+    manifest_read.return_value = [primary]
+    connect_vscode.return_value = 0
+    runner = CliRunner()
+    result = runner.invoke(main, ["connect", "vscode"])
+    assert result.exit_code == 0
+    connect_vscode.assert_called_once()
+
+
+@patch("remo_tart.cli.vm.is_running")
+def test_connect_errors_when_not_running(is_running: MagicMock, fake_repo: Path) -> None:
+    is_running.return_value = False
+    runner = CliRunner()
+    result = runner.invoke(main, ["connect", "vscode"])
+    assert result.exit_code == 1
+    assert "not running" in result.output or result.exit_code == 1
+
+
+@patch("remo_tart.cli._connect.connect_cli")
+@patch("remo_tart.cli.vm.is_running")
+@patch("remo_tart.cli.mount.manifest_read")
+def test_connect_cli_default_mode(
+    manifest_read: MagicMock,
+    is_running: MagicMock,
+    connect_cli: MagicMock,
+    fake_repo: Path,
+) -> None:
+    from remo_tart.mount import MountEntry
+
+    is_running.return_value = True
+    primary = MountEntry(name="remo-main", host_path=fake_repo)
+    manifest_read.return_value = [primary]
+    connect_cli.return_value = 0
+    runner = CliRunner()
+    result = runner.invoke(main, ["connect"])
+    assert result.exit_code == 0
+    connect_cli.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# status subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli._status.collect")
+@patch("remo_tart.cli._status.render_human")
+def test_status_calls_collect_and_renders(
+    render_human: MagicMock,
+    collect: MagicMock,
+    fake_repo: Path,
+) -> None:
+    collect.return_value = {"vm": {}}
+    render_human.return_value = "vm:\n  name=remo-dev"
+    runner = CliRunner()
+    result = runner.invoke(main, ["status"])
+    assert result.exit_code == 0
+    collect.assert_called_once()
+    render_human.assert_called_once()
+
+
+@patch("remo_tart.cli._status.collect")
+@patch("remo_tart.cli._status.render_json")
+def test_status_json_flag(
+    render_json: MagicMock,
+    collect: MagicMock,
+    fake_repo: Path,
+) -> None:
+    collect.return_value = {"vm": {}}
+    render_json.return_value = '{"vm": {}}'
+    runner = CliRunner()
+    result = runner.invoke(main, ["status", "--json"])
+    assert result.exit_code == 0
+    collect.assert_called_once()
+    render_json.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# doctor subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli._doctor.run_all")
+@patch("remo_tart.cli._doctor.render")
+@patch("remo_tart.cli._doctor.exit_code")
+def test_doctor_runs_all_checks(
+    exit_code: MagicMock,
+    render: MagicMock,
+    run_all: MagicMock,
+    fake_repo: Path,
+) -> None:
+    from remo_tart.doctor import Finding
+
+    findings = [Finding("ok", "all good")]
+    run_all.return_value = findings
+    render.return_value = "status: ok"
+    exit_code.return_value = 0
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    assert result.exit_code == 0
+    run_all.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# ssh subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli.vm.exec_interactive")
+@patch("remo_tart.cli.vm.is_running")
+def test_ssh_forwards_args_when_running(
+    is_running: MagicMock,
+    exec_interactive: MagicMock,
+    fake_repo: Path,
+) -> None:
+    is_running.return_value = True
+    exec_interactive.return_value = 0
+    runner = CliRunner()
+    result = runner.invoke(main, ["ssh", "--", "uname", "-a"])
+    assert result.exit_code == 0
+    exec_interactive.assert_called_once()
+    call_args = exec_interactive.call_args
+    assert "uname" in call_args[0][1]
+    assert "-a" in call_args[0][1]
+
+
+@patch("remo_tart.cli.vm.is_running")
+def test_ssh_errors_when_not_running(is_running: MagicMock, fake_repo: Path) -> None:
+    is_running.return_value = False
+    runner = CliRunner()
+    result = runner.invoke(main, ["ssh"])
+    assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# destroy subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli._ssh.remove_managed_block")
+@patch("remo_tart.cli._ssh.remove_include_from_user_config")
+@patch("remo_tart.cli.vm.exists")
+@patch("remo_tart.cli.vm.delete")
+@patch("remo_tart.cli.launchd.remove")
+def test_destroy_force_skips_prompt(
+    launchd_remove: MagicMock,
+    vm_delete: MagicMock,
+    vm_exists: MagicMock,
+    remove_include: MagicMock,
+    remove_block: MagicMock,
+    fake_repo: Path,
+) -> None:
+    vm_exists.return_value = True
+    runner = CliRunner()
+    result = runner.invoke(main, ["destroy", "--force"])
+    assert result.exit_code == 0
+    launchd_remove.assert_called_once()
+    vm_delete.assert_called_once()
+    remove_block.assert_called_once()
+    remove_include.assert_called_once()
+
+
+@patch("remo_tart.cli._ssh.remove_managed_block")
+@patch("remo_tart.cli._ssh.remove_include_from_user_config")
+@patch("remo_tart.cli.vm.exists")
+@patch("remo_tart.cli.vm.delete")
+@patch("remo_tart.cli.launchd.remove")
+def test_destroy_prompt_abort_exits_nonzero(
+    launchd_remove: MagicMock,
+    vm_delete: MagicMock,
+    vm_exists: MagicMock,
+    remove_include: MagicMock,
+    remove_block: MagicMock,
+    fake_repo: Path,
+) -> None:
+    vm_exists.return_value = True
+    runner = CliRunner()
+    result = runner.invoke(main, ["destroy"], input="n\n")
+    assert result.exit_code != 0
+    vm_delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# clean-worktree subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli.mount.manifest_remove")
+def test_clean_worktree_removes_from_manifest(
+    manifest_remove: MagicMock,
+    fake_repo: Path,
+) -> None:
+    manifest_remove.return_value = []
+    runner = CliRunner()
+    result = runner.invoke(main, ["clean-worktree", str(fake_repo)])
+    assert result.exit_code == 0
+    manifest_remove.assert_called_once()
+
+
+@patch("remo_tart.cli.mount.manifest_remove")
+def test_clean_worktree_defaults_to_cwd(
+    manifest_remove: MagicMock,
+    fake_repo: Path,
+) -> None:
+    manifest_remove.return_value = []
+    runner = CliRunner()
+    result = runner.invoke(main, ["clean-worktree"])
+    assert result.exit_code == 0
+    manifest_remove.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# bootstrap subcommand
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.cli._connect.connect_cli")
+@patch("remo_tart.cli.worktree.ensure_attached")
+def test_bootstrap_calls_ensure_attached_and_connect_cli(
+    ensure: MagicMock,
+    connect_cli: MagicMock,
+    fake_repo: Path,
+) -> None:
+    from remo_tart.mount import MountEntry
+
+    primary = MountEntry(name="remo-main", host_path=fake_repo)
+    ensure.return_value = MagicMock(primary=primary, actions=(Action.CREATE,))
+    connect_cli.return_value = 0
+    runner = CliRunner()
+    result = runner.invoke(main, ["bootstrap"])
+    assert result.exit_code == 0
+    ensure.assert_called_once()
+    connect_cli.assert_called_once()
