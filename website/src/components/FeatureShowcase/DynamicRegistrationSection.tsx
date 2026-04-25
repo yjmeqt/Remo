@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { PhoneFrame } from "../PhoneFrame";
 import {
   ShowcaseSection,
   SectionHeader,
@@ -59,45 +60,12 @@ function CapChip({ name, active, accentColor, glowColor }: CapChipProps) {
 
 function PhoneMock({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="relative flex-shrink-0"
-      style={{ width: 130, height: 260, borderRadius: 22 }}
+    <PhoneFrame
+      width={150}
+      screenBackground="linear-gradient(180deg, #18181b, #1c1c20)"
     >
-      <div
-        className="absolute inset-0 overflow-hidden"
-        style={{
-          borderRadius: 22,
-          border: "1.5px solid rgba(63,63,70,0.4)",
-          background: "rgba(9,9,11,0.8)",
-        }}
-      >
-        {/* Notch */}
-        <div
-          className="absolute top-[5px] left-1/2 -translate-x-1/2 z-10"
-          style={{
-            width: 36,
-            height: 12,
-            background: "#09090b",
-            borderRadius: "0 0 8px 8px",
-          }}
-        />
-
-        {/* Screen */}
-        <div
-          className="absolute overflow-hidden"
-          style={{
-            left: "4%",
-            right: "4%",
-            top: "2.5%",
-            bottom: "2.5%",
-            borderRadius: 18,
-            background: "linear-gradient(180deg, #18181b, #1c1c20)",
-          }}
-        >
-          {children}
-        </div>
-      </div>
-    </div>
+      <div className="absolute inset-0">{children}</div>
+    </PhoneFrame>
   );
 }
 
@@ -108,11 +76,11 @@ function PhoneMock({ children }: { children: React.ReactNode }) {
 function HomeScreen() {
   return (
     <div className="flex flex-col h-full">
-      {/* Nav */}
+      {/* Nav — extra top padding leaves room for the dynamic island that sits in front. */}
       <div
-        className="flex items-center justify-center border-b"
+        className="flex items-end justify-center border-b pb-1"
         style={{
-          height: 28,
+          paddingTop: 22,
           background: "rgba(63,63,70,0.2)",
           borderColor: "rgba(63,63,70,0.15)",
         }}
@@ -148,16 +116,16 @@ function HomeScreen() {
 function DetailScreen() {
   return (
     <div className="flex flex-col h-full">
-      {/* Nav */}
+      {/* Nav — extra top padding leaves room for the dynamic island that sits in front. */}
       <div
-        className="flex items-center border-b px-2"
+        className="flex items-end border-b px-2 pb-1.5 gap-1"
         style={{
-          height: 28,
+          paddingTop: 22,
           background: "rgba(63,63,70,0.2)",
           borderColor: "rgba(63,63,70,0.15)",
         }}
       >
-        <div className="flex gap-1">
+        <div className="flex gap-1 mb-[3px]">
           <div className="w-1 h-1 rounded-full bg-zinc-600" />
           <div className="w-1 h-1 rounded-full bg-zinc-600" />
         </div>

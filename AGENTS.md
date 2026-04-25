@@ -98,7 +98,7 @@ cd website && npm install && npm run dev   # Dev server at localhost:5173
 cd website && npm run build                # Production build → dist/
 ```
 
-The demo hero plays a real screen recording (`website/public/demo.mp4`) synced to a terminal animation. To re-record the demo video, see `scripts/record-demo.sh`.
+The demo hero is a React mock of the RemoExample UI (`website/src/components/DemoHero/PhoneScreen/`) driven by a single timeline (`timeline.ts`) — each `command` step carries a `phoneAction` that `useTimeline` replays into `PhoneState`, so terminal output and on-screen reactions stay locked in sync without a video.
 
 ## Claude Code Skills (`skills/`)
 

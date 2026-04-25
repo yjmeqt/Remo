@@ -20,20 +20,9 @@ pnpm build    # outputs to dist/
 pnpm preview  # preview production build locally
 ```
 
-## Demo Video
+## Demo Phone
 
-The hero section plays a real screen recording of RemoExample being driven by Remo capabilities. To re-record:
-
-```bash
-# From repo root — requires a booted iOS Simulator with RemoExample
-./scripts/record-demo.sh
-
-# Then copy artifacts
-cp /tmp/remo-demo/demo.mp4 website/public/demo.mp4
-# Update website/src/components/DemoHero/timeline.ts with new elapsed_s values
-```
-
-See `scripts/record-demo.sh` for details on the recording process.
+The hero phone is a React mock of `RemoExample` (not a video). Each timeline step that triggers a capability carries a `phoneAction` (toast, confetti, navigate, grid tab/scroll, feed append, accent color), and `useTimeline` derives `PhoneState` from the elapsed clock so the on-screen reaction stays locked to the matching terminal line. To tweak timing, edit step `time` values in `timeline.ts` and `PHONE_ACTION_DELAY` for the per-action lag.
 
 ## Deployment
 
@@ -74,16 +63,16 @@ Code syntax colors are consistent across all CLI panels: violet keywords, emeral
 
 ### Hero Demo
 
-The hero section plays a recorded demo of RemoExample being driven by Remo capabilities. The demo exists to prove that capability invocations produce real app changes; it is not meant to market Remo as a media-capture product.
+The hero section simulates RemoExample being driven by Remo capabilities. The phone is a React mock of the real iOS UI (Home + Grid tabs, toast, confetti, accent color), so terminal commands and on-screen reactions stay deterministically aligned without a recorded video.
 
 The narrative has two phases:
 
-1. **Code phase** (0-10s, terminal only): Claude explores the codebase, reads `ContentView.swift`, and registers capabilities. The iPhone screen is blank.
-2. **Live app phase** (10s onwards, terminal + video): Claude invokes capabilities in sequence. The iPhone video shows the running app responding in sync.
+1. **Code phase** (0 → `PHONE_BOOT_TIME`, terminal only): Claude explores the codebase, reads `ContentView.swift`, and registers capabilities. The iPhone screen shows a lock-screen image.
+2. **Live app phase** (after `PHONE_BOOT_TIME`, terminal + simulated phone): Claude invokes capabilities in sequence. Each `command` step carries an optional `phoneAction` consumed by `useTimeline` to derive the current `PhoneState`.
 
-**Video-terminal synchronization:** Terminal step times are `VIDEO_PHASE_START + elapsed_s` where `elapsed_s` comes from real recording timestamps (`demo-timestamps.json`). Video playback time is `(elapsed - VIDEO_PHASE_START) + VIDEO_OFFSET`, where `VIDEO_OFFSET` (1s) skips the recording startup idle period. See `timeline.ts` for the full alignment model.
+**Action timing:** Each `phoneAction` lands at `step.time + PHONE_ACTION_DELAY` (≈0.45s) so the screen reacts a beat after the terminal line, mimicking an RPC round-trip. Tune both in `timeline.ts`.
 
-**Curated capability sequence:** The demo exercises a visually compelling subset - counter increments, toast notification, accent color change, confetti animation, tab navigation, and item list additions. Internal capabilities (`__ping`, `__device_info`) and non-visual ones (`state.get`) are excluded.
+**Curated capability sequence:** toast, confetti, accent color, navigate to Grid, switch grid tab, scroll, append feed card. Internal/non-visual capabilities are excluded.
 
 ### Design Specs
 
@@ -103,10 +92,15 @@ src/
 ├── components/
 │   ├── DemoHero/
 │   │   ├── DemoHero.tsx       — two-column layout (iPhone + terminal)
-│   │   ├── IPhoneFrame.tsx    — iPhone mockup with synced video playback
+│   │   ├── IPhoneFrame.tsx    — iPhone bezel + screen container
+│   │   ├── PhoneScreen/       — React mock of the RemoExample UI
+│   │   │   ├── PhoneScreen.tsx, StatusBar.tsx, TabBar.tsx
+│   │   │   ├── HomeScreen.tsx, GridScreen.tsx
+│   │   │   ├── Toast.tsx, Confetti.tsx
+│   │   │   ├── colors.ts, gridSeed.ts
 │   │   ├── AgentTerminal.tsx  — animated terminal showing agent commands
-│   │   ├── timeline.ts        — demo steps with timestamps from recording
-│   │   └── useTimeline.ts     — animation driver (requestAnimationFrame)
+│   │   ├── timeline.ts        — demo steps with phone actions
+│   │   └── useTimeline.ts     — clock + phone state derivation
 │   ├── FeatureShowcase/
 │   │   ├── FeatureShowcase.tsx            — renders the active marketing sections
 │   │   ├── shared.tsx                     — design system (GlassPanel, AmbientLight, animations)

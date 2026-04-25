@@ -5,7 +5,7 @@ import { AgentTerminal } from "./AgentTerminal";
 export function DemoHero() {
   const {
     visibleSteps,
-    currentVideoTime,
+    phoneState,
     isResetting,
   } = useTimeline();
 
@@ -26,7 +26,7 @@ export function DemoHero() {
       <div className="flex gap-4 px-5 pb-8 max-w-5xl mx-auto h-[613px]">
         {/* Left: iPhone */}
         <div className="flex-none h-full">
-          <IPhoneFrame videoTime={currentVideoTime} />
+          <IPhoneFrame phoneState={phoneState} />
         </div>
 
         {/* Right: Agent Terminal — aligned with iPhone screen area (2.5% top/bottom) */}
