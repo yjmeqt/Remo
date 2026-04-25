@@ -68,9 +68,12 @@ def build_guest_script(
     if project.packs:
         lines.append("")
 
-    # Call the ensure function for each enabled pack
+    # Call the ensure function for each enabled pack. Pass the worktree root
+    # (the primary mount's guest path) so pack functions can locate the
+    # in-tree .tart/<pack-cache>/ directories. Packs that don't need it
+    # simply ignore extra args.
     for pack in project.packs:
-        lines.append(f"tart_pack_{pack}_ensure")
+        lines.append(f"tart_pack_{pack}_ensure {shlex.quote(primary_guest_path)}")
 
     if project.packs:
         lines.append("")
