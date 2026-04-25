@@ -40,6 +40,7 @@ def fake_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@patch("remo_tart.worktree.vm.is_running", return_value=True)
 @patch("remo_tart.worktree._configure_ssh")
 @patch("remo_tart.worktree._read_state")
 @patch("remo_tart.worktree._action_create")
@@ -47,6 +48,7 @@ def test_missing_vm_triggers_create(
     create: MagicMock,
     read: MagicMock,
     config_ssh: MagicMock,
+    is_running: MagicMock,
     fake_home: Path,
     fake_repo: Path,
 ) -> None:
@@ -81,6 +83,7 @@ def test_healthy_state_is_nothing_and_still_configures_ssh(
     config_ssh.assert_called_once()
 
 
+@patch("remo_tart.worktree.vm.is_running", return_value=True)
 @patch("remo_tart.worktree._configure_ssh")
 @patch("remo_tart.worktree._read_state")
 @patch("remo_tart.worktree._action_update_mount_and_restart")
@@ -88,6 +91,7 @@ def test_running_with_mismatched_mount_triggers_update_and_restart(
     update: MagicMock,
     read: MagicMock,
     config_ssh: MagicMock,
+    is_running: MagicMock,
     fake_home: Path,
     fake_repo: Path,
 ) -> None:
@@ -97,6 +101,7 @@ def test_running_with_mismatched_mount_triggers_update_and_restart(
     config_ssh.assert_called_once()
 
 
+@patch("remo_tart.worktree.vm.is_running", return_value=True)
 @patch("remo_tart.worktree._configure_ssh")
 @patch("remo_tart.worktree._read_state")
 @patch("remo_tart.worktree._action_start")
@@ -104,6 +109,7 @@ def test_stopped_with_matching_mount_triggers_start(
     start: MagicMock,
     read: MagicMock,
     config_ssh: MagicMock,
+    is_running: MagicMock,
     fake_home: Path,
     fake_repo: Path,
 ) -> None:
@@ -121,6 +127,7 @@ def test_ensure_attached_upserts_primary_and_git_root(fake_home: Path, fake_repo
         patch("remo_tart.worktree._read_state") as read,
         patch("remo_tart.worktree._action_nothing"),
         patch("remo_tart.worktree._configure_ssh"),
+        patch("remo_tart.worktree.vm.is_running", return_value=True),
     ):
         read.return_value = VmState(exists=True, running=True, mount_matches=True)
         ensure_attached(fake_repo, _cfg(), fake_repo)
@@ -293,11 +300,13 @@ def test_configure_ssh_raises_when_guest_injection_fails(
 # ---------------------------------------------------------------------------
 
 
+@patch("remo_tart.worktree.vm.ip_address", return_value=None)
 @patch("remo_tart.worktree.vm.exec_capture")
 @patch("remo_tart.worktree.vm.is_running", return_value=True)
 def test_wait_for_guest_exec_polls_exec_capture(
     is_running: MagicMock,
     exec_capture: MagicMock,
+    ip_address: MagicMock,
 ) -> None:
     from remo_tart.worktree import _wait_for_guest_exec
 
@@ -307,11 +316,13 @@ def test_wait_for_guest_exec_polls_exec_capture(
     exec_capture.assert_called_with("remo-dev", ["/usr/bin/true"])
 
 
+@patch("remo_tart.worktree.vm.ip_address", return_value=None)
 @patch("remo_tart.worktree.vm.exec_capture")
 @patch("remo_tart.worktree.vm.is_running", return_value=True)
 def test_wait_for_guest_exec_raises_on_timeout(
     is_running: MagicMock,
     exec_capture: MagicMock,
+    ip_address: MagicMock,
 ) -> None:
     from remo_tart.errors import RemoTartError
     from remo_tart.worktree import _wait_for_guest_exec
@@ -363,6 +374,7 @@ def test_attach_outcome_has_primary_and_immutable_fields(fake_home: Path, fake_r
         patch("remo_tart.worktree._read_state") as read,
         patch("remo_tart.worktree._action_nothing"),
         patch("remo_tart.worktree._configure_ssh"),
+        patch("remo_tart.worktree.vm.is_running", return_value=True),
     ):
         read.return_value = VmState(exists=True, running=True, mount_matches=True)
         outcome = ensure_attached(fake_repo, _cfg(), fake_repo)
