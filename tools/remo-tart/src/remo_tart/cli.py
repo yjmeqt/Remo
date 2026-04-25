@@ -1,7 +1,6 @@
 """remo-tart command-line entry point.
 
-PR 2: every subcommand calls into native Python modules.  The bash shim
-(dispatch.py / scripts/tart/*.sh) is no longer invoked from here.
+Every subcommand calls into native Python modules.
 """
 
 from __future__ import annotations
@@ -20,16 +19,13 @@ from remo_tart.console import get_console, render_error
 from remo_tart.errors import RemoTartError
 from remo_tart.mount import manifest_read, mount_name_for_path
 from remo_tart.paths import (
+    find_repo_root,
     mount_manifest_path,
     ssh_include_path,
     ssh_key_path,
     user_ssh_config_path,
     vm_log_path,
 )
-
-# TODO(pr3): move to config
-_GUEST_USER = "admin"
-
 
 # ---------------------------------------------------------------------------
 # _load_cfg helper
@@ -38,12 +34,9 @@ _GUEST_USER = "admin"
 
 def _load_cfg(ctx: click.Context):  # type: ignore[return]
     """Resolve the repo root and load .tart/project.toml. Used by every subcommand."""
-    from remo_tart import config, dispatch
+    from remo_tart import config
 
-    try:
-        repo = dispatch.find_repo_root()
-    except RemoTartError:
-        raise
+    repo = find_repo_root()
     project = config.load(repo)
     ctx.obj["repo_root"] = repo
     ctx.obj["project"] = project
@@ -117,11 +110,11 @@ def up(ctx: click.Context, mode: str) -> None:
     outcome = worktree.ensure_attached(repo, project, cwd)
     name = project.vm.name
     if mode == "cli":
-        code = _connect.connect_cli(name, _GUEST_USER)
+        code = _connect.connect_cli(name, project.vm.guest_user)
     elif mode == "vscode":
-        code = _connect.connect_vscode(name, _GUEST_USER, outcome.primary)
+        code = _connect.connect_vscode(name, project.vm.guest_user, outcome.primary)
     else:  # cursor
-        code = _connect.connect_cursor(name, _GUEST_USER, outcome.primary)
+        code = _connect.connect_cursor(name, project.vm.guest_user, outcome.primary)
     ctx.exit(code)
 
 
@@ -182,11 +175,11 @@ def connect(ctx: click.Context, mode: str) -> None:
     entries = mount.manifest_read(manifest_path)
     primary = _resolve_primary_mount(entries, Path.cwd())
     if mode == "cli":
-        code = _connect.connect_cli(name, _GUEST_USER)
+        code = _connect.connect_cli(name, project.vm.guest_user)
     elif mode == "vscode":
-        code = _connect.connect_vscode(name, _GUEST_USER, primary)
+        code = _connect.connect_vscode(name, project.vm.guest_user, primary)
     else:  # cursor
-        code = _connect.connect_cursor(name, _GUEST_USER, primary)
+        code = _connect.connect_cursor(name, project.vm.guest_user, primary)
     ctx.exit(code)
 
 
@@ -289,7 +282,7 @@ def bootstrap(ctx: click.Context) -> None:
     cwd = Path.cwd()
     worktree.ensure_attached(repo, project, cwd)
     name = project.vm.name
-    code = _connect.connect_cli(name, _GUEST_USER)
+    code = _connect.connect_cli(name, project.vm.guest_user)
     ctx.exit(code)
 
 

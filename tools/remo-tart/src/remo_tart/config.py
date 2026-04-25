@@ -17,6 +17,8 @@ class VmConfig(BaseModel):
     cpu: int = Field(ge=1)
     memory_gb: int = Field(ge=1)
     network: str
+    guest_user: str = "admin"
+    guest_password: str = "admin"
 
 
 class ScriptsConfig(BaseModel):

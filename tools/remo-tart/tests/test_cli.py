@@ -44,9 +44,7 @@ verify_worktree = ".tart/verify-worktree.sh"
 @pytest.fixture
 def fake_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(tmp_path))
-    # The "repo" needs scripts/tart/ to satisfy find_repo_root
-    (tmp_path / "scripts" / "tart").mkdir(parents=True)
-    # And a valid project.toml
+    # find_repo_root anchors on .tart/project.toml
     (tmp_path / ".tart").mkdir()
     (tmp_path / ".tart" / "project.toml").write_text(_VALID_TOML)
     monkeypatch.chdir(tmp_path)

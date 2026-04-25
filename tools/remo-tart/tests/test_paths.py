@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from remo_tart.errors import RemoTartError
 from remo_tart.paths import (
+    find_repo_root,
     mount_manifest_path,
     ssh_include_path,
     ssh_key_path,
@@ -12,6 +14,13 @@ from remo_tart.paths import (
     user_ssh_config_path,
     vm_log_path,
 )
+
+
+def _make_fake_repo(tmp_path: Path) -> Path:
+    tart = tmp_path / ".tart"
+    tart.mkdir()
+    (tart / "project.toml").write_text('[project]\nslug = "x"\n')
+    return tmp_path
 
 
 @pytest.fixture
@@ -44,3 +53,17 @@ def test_ssh_key_path(fake_home: Path) -> None:
 
 def test_user_ssh_config_path(fake_home: Path) -> None:
     assert user_ssh_config_path() == fake_home / ".ssh" / "config"
+
+
+def test_find_repo_root_walks_upward(tmp_path: Path) -> None:
+    repo = _make_fake_repo(tmp_path)
+    nested = repo / "a" / "b" / "c"
+    nested.mkdir(parents=True)
+    assert find_repo_root(nested) == repo
+
+
+def test_find_repo_root_raises_when_not_found(tmp_path: Path) -> None:
+    with pytest.raises(RemoTartError) as excinfo:
+        find_repo_root(tmp_path)
+    assert excinfo.value.hint is not None
+    assert "project.toml" in excinfo.value.hint

@@ -1,9 +1,5 @@
 """Mount manifest management, name derivation, and guest bridge script generation."""
 
-# The guest password defaults to the Cirrus Labs macOS image default ("admin").
-# Later tasks (see plan Task 8) will thread the real value from project config
-# into callers of guest_bridge_script.
-
 from __future__ import annotations
 
 import contextlib
@@ -157,7 +153,7 @@ def guest_bridge_script(
     entries: list[MountEntry],
     git_root_name: str,
     *,
-    guest_password: str = "admin",
+    guest_password: str,
 ) -> str:
     """Return a bash script that wires up ``.git`` symlinks inside the guest.
 

@@ -1,8 +1,10 @@
-"""Centralised on-disk paths. Pure — no I/O."""
+"""Centralised on-disk paths and repo-root discovery."""
 
 from __future__ import annotations
 
 from pathlib import Path
+
+from remo_tart.errors import RemoTartError
 
 
 def _config_root() -> Path:
@@ -32,3 +34,18 @@ def ssh_key_path(vm_name: str) -> Path:
 
 def user_ssh_config_path() -> Path:
     return Path.home() / ".ssh" / "config"
+
+
+def find_repo_root(start: Path | None = None) -> Path:
+    """Walk upward from ``start`` (default cwd) until ``.tart/project.toml`` is found.
+
+    Raises ``RemoTartError`` if not found.
+    """
+    current = (start or Path.cwd()).resolve()
+    for candidate in [current, *current.parents]:
+        if (candidate / ".tart" / "project.toml").is_file():
+            return candidate
+    raise RemoTartError(
+        "unable to find the Remo repo root from the current working directory",
+        hint="run remo-tart from inside a Tart-managed project (.tart/project.toml must exist)",
+    )

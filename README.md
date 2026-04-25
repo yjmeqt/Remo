@@ -289,8 +289,9 @@ Everything below is for contributing to Remo itself.
 ```bash
 git clone https://github.com/yjmeqt/Remo.git && cd Remo
 make setup   # Configure git hooks
-brew install cirruslabs/cli/tart
-scripts/tart/bootstrap-dev-vm.sh
+brew install cirruslabs/cli/tart astral-sh/uv/uv
+uv tool install --editable tools/remo-tart
+remo-tart up
 ```
 
 After that:
@@ -299,16 +300,18 @@ After that:
 # New worktree
 git worktree add .worktrees/my-branch -b my-branch
 cd .worktrees/my-branch
-scripts/tart/use-worktree-dev-vm.sh
+remo-tart up           # attach + boot + connect (cli)
 
-# Connect for daily development
-scripts/tart/connect-dev-vm.sh cli
-scripts/tart/connect-dev-vm.sh cursor
-scripts/tart/connect-dev-vm.sh vscode
+# Or open in editor directly
+remo-tart up cursor
+remo-tart up vscode
 
-# Clean only the current worktree's generated Tart caches
-scripts/tart/clean-worktree-dev-vm.sh
-scripts/tart/clean-worktree-dev-vm.sh --full
+# Remove a worktree's mount when done
+remo-tart clean-worktree
+
+# Health check
+remo-tart status
+remo-tart doctor
 ```
 
 Use Tart for Remo development by default, but it is not a hard requirement.

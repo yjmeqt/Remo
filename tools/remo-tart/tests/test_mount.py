@@ -141,6 +141,7 @@ def test_guest_bridge_script_contains_expected_markers() -> None:
     script = guest_bridge_script(
         [MountEntry("remo-feat", Path("/r"))],
         git_root_name="remo-git-root",
+        guest_password="admin",
     )
     assert "#!/usr/bin/env bash" in script
     assert "set -euo pipefail" in script
@@ -155,6 +156,7 @@ def test_guest_bridge_script_excludes_git_root_entry() -> None:
             MountEntry("remo-feat", Path("/r")),
         ],
         git_root_name="remo-git-root",
+        guest_password="admin",
     )
     # The git-root bridge itself must not be symlinked to its own .git subdir.
     assert "My Shared Files/remo-git-root/.git" not in script
