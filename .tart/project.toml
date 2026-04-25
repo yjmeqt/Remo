@@ -1,0 +1,16 @@
+[project]
+slug = "remo"
+
+[vm]
+name = "remo-dev"
+base_image = "ghcr.io/cirruslabs/macos-tahoe-xcode:26"
+cpu = 6
+memory_gb = 12
+network = "bridged:en0"
+
+[packs]
+enabled = ["shell", "ios", "rust", "node", "agents"]
+
+[scripts]
+provision = ".tart/provision.sh"
+verify_worktree = ".tart/verify-worktree.sh"
