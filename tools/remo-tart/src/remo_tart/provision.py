@@ -54,6 +54,12 @@ def build_guest_script(
         "",
     ]
 
+    # Source the shared helper library first; packs depend on its functions
+    # (retry_command, ensure_xcode, ensure_node_and_npm, ensure_codex,
+    # remo_tart_worktree_env_exports).
+    lines.append(f"source {_always_quote(f'{packs_dir_guest}/_lib.sh')}")
+    lines.append("")
+
     # Source each enabled pack
     for pack in project.packs:
         pack_path = f"{packs_dir_guest}/{pack}.sh"

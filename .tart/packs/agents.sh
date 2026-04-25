@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Provision Claude Code CLI and XcodeBuildMCP CLI inside the guest.
-# Relies on helpers sourced by scripts/tart/provision-dev-vm.sh:
+# Relies on helpers from .tart/packs/_lib.sh:
 #   - ensure_node_and_npm
 #   - retry_command
 

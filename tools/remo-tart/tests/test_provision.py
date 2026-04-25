@@ -48,6 +48,17 @@ def test_script_sources_each_enabled_pack() -> None:
     assert 'source "/P/node.sh"' in script or "source '/P/node.sh'" in script
 
 
+def test_script_sources_lib_before_any_pack() -> None:
+    script = build_guest_script(
+        _cfg(["ios", "rust"]), _mounts(), packs_dir_guest="/P", verify=False
+    )
+    lib_idx = script.index("_lib.sh")
+    ios_idx = script.index("ios.sh")
+    rust_idx = script.index("rust.sh")
+    assert lib_idx < ios_idx
+    assert lib_idx < rust_idx
+
+
 def test_script_calls_ensure_function_for_each_pack() -> None:
     script = build_guest_script(_cfg(["ios", "rust"]), _mounts(), packs_dir_guest="/P", verify=True)
     assert "tart_pack_ios_ensure" in script
@@ -87,8 +98,9 @@ def test_script_skips_git_root_bridge_for_primary_mount_selection() -> None:
 
 def test_script_with_empty_packs_list() -> None:
     script = build_guest_script(_cfg(packs=[]), _mounts(), packs_dir_guest="/P", verify=False)
-    # No `source` lines for packs, but the project provision script still runs
-    assert "source" not in script
+    # Helper library is always sourced; no per-pack source lines beyond _lib.sh.
+    assert script.count("source ") == 1
+    assert "_lib.sh" in script
     assert "provision.sh" in script
 
 

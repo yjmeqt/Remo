@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Provision zsh + oh-my-zsh + plugins for the guest `admin` user.
-# Relies on helpers sourced by scripts/tart/provision-dev-vm.sh:
+# Relies on helpers from .tart/packs/_lib.sh:
 #   - retry_command
 #   - remo_tart_worktree_env_exports
 
