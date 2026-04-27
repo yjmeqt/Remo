@@ -63,6 +63,7 @@ def test_missing_vm_triggers_create(
     assert Action.CREATE in outcome.actions
 
 
+@patch("remo_tart.worktree.provision.run_provision", return_value=0)
 @patch("remo_tart.worktree._configure_ssh")
 @patch("remo_tart.worktree._read_state")
 @patch("remo_tart.worktree._action_nothing")
@@ -72,6 +73,7 @@ def test_healthy_state_is_nothing_and_still_configures_ssh(
     nothing: MagicMock,
     read: MagicMock,
     config_ssh: MagicMock,
+    run_provision: MagicMock,
     fake_home: Path,
     fake_repo: Path,
 ) -> None:
@@ -137,6 +139,7 @@ def test_ensure_attached_writes_single_umbrella_entry(fake_home: Path, fake_repo
         patch("remo_tart.worktree._action_nothing"),
         patch("remo_tart.worktree._configure_ssh"),
         patch("remo_tart.worktree.vm.is_running", return_value=True),
+        patch("remo_tart.worktree.provision.run_provision", return_value=0),
     ):
         read.return_value = VmState(exists=True, running=True, mount_matches=True)
         ensure_attached(fake_repo, _cfg(), fake_repo)
@@ -167,6 +170,7 @@ def test_ensure_attached_drops_legacy_manifest_entries(fake_home: Path, fake_rep
         patch("remo_tart.worktree._action_nothing"),
         patch("remo_tart.worktree._configure_ssh"),
         patch("remo_tart.worktree.vm.is_running", return_value=True),
+        patch("remo_tart.worktree.provision.run_provision", return_value=0),
     ):
         read.return_value = VmState(exists=True, running=True, mount_matches=True)
         ensure_attached(fake_repo, _cfg(), fake_repo)
@@ -184,6 +188,7 @@ def test_ensure_attached_uses_pool_name_when_provided(fake_home: Path, fake_repo
         patch("remo_tart.worktree._action_nothing"),
         patch("remo_tart.worktree._configure_ssh"),
         patch("remo_tart.worktree.vm.is_running", return_value=True),
+        patch("remo_tart.worktree.provision.run_provision", return_value=0),
     ):
         read.return_value = VmState(exists=True, running=True, mount_matches=True)
         outcome = ensure_attached(fake_repo, _cfg(), fake_repo, pool_name="alpha")
@@ -390,6 +395,7 @@ def test_attach_outcome_carries_attachment(fake_home: Path, fake_repo: Path) -> 
         patch("remo_tart.worktree._action_nothing"),
         patch("remo_tart.worktree._configure_ssh"),
         patch("remo_tart.worktree.vm.is_running", return_value=True),
+        patch("remo_tart.worktree.provision.run_provision", return_value=0),
     ):
         read.return_value = VmState(exists=True, running=True, mount_matches=True)
         outcome = ensure_attached(fake_repo, _cfg(), fake_repo)
@@ -686,7 +692,7 @@ def test_read_state_without_expected_mount_falls_back_to_name_only(tmp_path: Pat
 @patch("remo_tart.worktree._configure_ssh")
 @patch("remo_tart.worktree._read_state")
 @patch("remo_tart.worktree._action_nothing")
-def test_provision_skipped_when_only_nothing_action(
+def test_provision_skipped_when_nothing_action_and_hash_matches(
     nothing: MagicMock,
     read: MagicMock,
     config_ssh: MagicMock,
@@ -695,9 +701,20 @@ def test_provision_skipped_when_only_nothing_action(
     fake_home: Path,
     fake_repo: Path,
 ) -> None:
-    """When the VM is already in the desired state (NOTHING action),
-    provision must NOT re-run — packs ensure is idempotent but expensive
-    (npm/brew network calls) and unnecessary."""
+    """When the VM is already in the desired state AND on-disk config
+    matches what was last provisioned, provision must NOT re-run —
+    packs ensure is idempotent but expensive (npm/brew network calls)
+    and unnecessary."""
+    from remo_tart import provision
+    from remo_tart.paths import provisioned_hash_path
+
+    # Pre-write the state file with the matching hash so the drift
+    # check sees no change since last provision.
+    expected_hash = provision.config_hash(_cfg(), fake_repo)
+    state_path = provisioned_hash_path("remo-dev")
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(expected_hash)
+
     read.return_value = VmState(exists=True, running=True, mount_matches=True)
     ensure_attached(fake_repo, _cfg(), fake_repo)
     nothing.assert_called_once()
@@ -748,3 +765,121 @@ def test_provision_called_with_verify_false(
     ensure_attached(fake_repo, _cfg(), fake_repo)
     _, kwargs = run_provision.call_args
     assert kwargs.get("verify") is False
+
+
+# ---------------------------------------------------------------------------
+# config-hash drift handling (issue #68 phase 1)
+# ---------------------------------------------------------------------------
+
+
+@patch("remo_tart.worktree.provision.run_provision", return_value=0)
+@patch("remo_tart.worktree.vm.is_running", return_value=True)
+@patch("remo_tart.worktree._configure_ssh")
+@patch("remo_tart.worktree._read_state")
+@patch("remo_tart.worktree._action_nothing")
+def test_provision_runs_on_config_drift_even_when_action_is_nothing(
+    nothing: MagicMock,
+    read: MagicMock,
+    config_ssh: MagicMock,
+    is_running: MagicMock,
+    run_provision: MagicMock,
+    fake_home: Path,
+    fake_repo: Path,
+) -> None:
+    """If the on-disk config hash differs from the last-provisioned
+    hash, provision must run even when the VM-state machine returns
+    NOTHING. This is the bug where a user adds a pack to enabled and
+    `remo-tart up` silently skips the new pack."""
+    from remo_tart.paths import provisioned_hash_path
+
+    # Pre-write a stale hash so drift is detected.
+    state_path = provisioned_hash_path("remo-dev")
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text("stale-hash-from-an-earlier-config")
+
+    read.return_value = VmState(exists=True, running=True, mount_matches=True)
+    ensure_attached(fake_repo, _cfg(), fake_repo)
+    nothing.assert_called_once()
+    run_provision.assert_called_once()
+
+
+@patch("remo_tart.worktree.provision.run_provision", return_value=0)
+@patch("remo_tart.worktree.vm.is_running", return_value=True)
+@patch("remo_tart.worktree._configure_ssh")
+@patch("remo_tart.worktree._read_state")
+@patch("remo_tart.worktree._action_nothing")
+def test_provision_runs_on_first_attach_when_no_state_file(
+    nothing: MagicMock,
+    read: MagicMock,
+    config_ssh: MagicMock,
+    is_running: MagicMock,
+    run_provision: MagicMock,
+    fake_home: Path,
+    fake_repo: Path,
+) -> None:
+    """A missing state file is treated as 'never provisioned', forcing
+    a provision run. This makes `up` self-healing if the state file is
+    deleted (or if a user manually `tart delete`'s and the hash file
+    leaks across) — better to reprovision than silently skip."""
+    read.return_value = VmState(exists=True, running=True, mount_matches=True)
+    ensure_attached(fake_repo, _cfg(), fake_repo)
+    run_provision.assert_called_once()
+
+
+@patch("remo_tart.worktree.provision.run_provision", return_value=0)
+@patch("remo_tart.worktree.vm.is_running", return_value=True)
+@patch("remo_tart.worktree._configure_ssh")
+@patch("remo_tart.worktree._read_state")
+@patch("remo_tart.worktree._action_create")
+def test_provision_writes_hash_after_success(
+    create: MagicMock,
+    read: MagicMock,
+    config_ssh: MagicMock,
+    is_running: MagicMock,
+    run_provision: MagicMock,
+    fake_home: Path,
+    fake_repo: Path,
+) -> None:
+    """Successful provision persists the hash that was provisioned, so
+    the next `up` knows what was installed."""
+    from remo_tart.paths import provisioned_hash_path
+    from remo_tart.provision import config_hash
+
+    read.return_value = VmState(exists=False, running=False, mount_matches=False)
+    ensure_attached(fake_repo, _cfg(), fake_repo)
+
+    expected = config_hash(_cfg(), fake_repo)
+    actual = provisioned_hash_path("remo-dev").read_text().strip()
+    assert actual == expected
+
+
+@patch("remo_tart.worktree.provision.run_provision", return_value=2)
+@patch("remo_tart.worktree.vm.is_running", return_value=True)
+@patch("remo_tart.worktree._configure_ssh")
+@patch("remo_tart.worktree._read_state")
+@patch("remo_tart.worktree._action_create")
+def test_provision_failure_does_not_update_hash(
+    create: MagicMock,
+    read: MagicMock,
+    config_ssh: MagicMock,
+    is_running: MagicMock,
+    run_provision: MagicMock,
+    fake_home: Path,
+    fake_repo: Path,
+) -> None:
+    """When provision fails, the state file must not be updated to the
+    failed-config hash — otherwise next `up` would think the (broken)
+    config is already installed and skip retrying."""
+    from remo_tart.errors import RemoTartError
+    from remo_tart.paths import provisioned_hash_path
+
+    state_path = provisioned_hash_path("remo-dev")
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text("stale-hash")
+
+    read.return_value = VmState(exists=False, running=False, mount_matches=False)
+    with pytest.raises(RemoTartError):
+        ensure_attached(fake_repo, _cfg(), fake_repo)
+
+    # Hash file is unchanged (still stale) so next attempt re-tries.
+    assert state_path.read_text() == "stale-hash"

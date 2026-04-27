@@ -24,6 +24,20 @@ def vm_log_path(vm_name: str) -> Path:
     return _config_root() / f"{vm_name}.log"
 
 
+def provisioned_hash_path(vm_name: str) -> Path:
+    """State file recording the config hash that was last successfully
+    provisioned into this VM. Compared on every ``up`` to detect drift
+    between what's installed in the VM and what the on-disk config now
+    asks for; mismatch forces a re-run of ``provision.run_provision``
+    even when the VM-state machine would otherwise return ``NOTHING``.
+
+    File contents: a single line with the hex SHA-256 (no trailing
+    newline). Missing file = "never provisioned" (also forces
+    provision).
+    """
+    return _config_root() / f"{vm_name}.provisioned-hash"
+
+
 def ssh_include_path() -> Path:
     return _config_root() / "ssh_config"
 

@@ -25,6 +25,7 @@ from remo_tart.mount import (
 )
 from remo_tart.paths import (
     mount_manifest_path,
+    provisioned_hash_path,
     ssh_include_path,
     ssh_key_path,
     user_ssh_config_path,
@@ -139,14 +140,25 @@ def ensure_attached(
 
     if vm.is_running(pool.name):
         _configure_ssh(project, pool, key_path)
-        if any(a != Action.NOTHING for a in actions):
-            step("running packs ensure + project provision hook")
+
+        current_hash = provision.config_hash(project, repo_root)
+        last_hash = _read_provisioned_hash(pool.name)
+        config_drifted = current_hash != last_hash
+        vm_changed = any(a != Action.NOTHING for a in actions)
+
+        if vm_changed or config_drifted:
+            if config_drifted and not vm_changed:
+                short_old = last_hash[:8] if last_hash else "none"
+                step(f"config drift detected ({short_old} → {current_hash[:8]}); reprovisioning")
+            else:
+                step("running packs ensure + project provision hook")
             rc = provision.run_provision(pool.name, project, mounts, verify=False)
             if rc != 0:
                 raise RemoTartError(
                     f"provision failed with exit code {rc}",
                     hint="re-run with -v for verbose pack output, or check guest logs",
                 )
+            _write_provisioned_hash(pool.name, current_hash)
 
     final_manifest = manifest_read(manifest_path)
     attachment = WorktreeAttachment(
@@ -164,6 +176,34 @@ def ensure_attached(
 # ---------------------------------------------------------------------------
 # Module-level helpers (patchable by tests)
 # ---------------------------------------------------------------------------
+
+
+def _read_provisioned_hash(vm_name: str) -> str | None:
+    """Return the previously-provisioned config hash for *vm_name*, or
+    None if the state file is missing or unreadable. ``None`` is
+    treated as "never provisioned" by the orchestrator and forces a
+    provision run.
+    """
+    path = provisioned_hash_path(vm_name)
+    try:
+        return path.read_text().strip() or None
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+        return None
+
+
+def _write_provisioned_hash(vm_name: str, value: str) -> None:
+    """Persist the most recently successfully-provisioned config hash.
+
+    Best-effort: an IO error here doesn't fail the attach (provision
+    already succeeded), it just means next ``up`` will re-provision —
+    correctness over efficiency.
+    """
+    path = provisioned_hash_path(vm_name)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+    except OSError:
+        pass
 
 
 def _running_mount_names(vm_name: str) -> set[str]:
