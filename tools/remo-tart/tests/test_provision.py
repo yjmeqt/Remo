@@ -65,6 +65,17 @@ def test_script_calls_ensure_function_for_each_pack() -> None:
     assert "tart_pack_rust_ensure" in script
 
 
+def test_script_passes_worktree_root_to_each_ensure() -> None:
+    """Regression: shell pack reads $1 under set -u; missing arg aborts provision."""
+    script = build_guest_script(
+        _cfg(["shell", "ios", "rust"]), _mounts(), packs_dir_guest="/P", verify=False
+    )
+    primary_guest_path = "/Volumes/My Shared Files/remo-feat"
+    assert f"tart_pack_shell_ensure '{primary_guest_path}'" in script
+    assert f"tart_pack_ios_ensure '{primary_guest_path}'" in script
+    assert f"tart_pack_rust_ensure '{primary_guest_path}'" in script
+
+
 def test_script_uses_primary_mount_for_project_scripts() -> None:
     script = build_guest_script(_cfg(), _mounts(), packs_dir_guest="/P", verify=True)
     # primary mount is remo-feat (first non-git-root)
