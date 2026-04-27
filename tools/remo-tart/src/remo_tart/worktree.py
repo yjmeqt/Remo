@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from remo_tart import launchd, ssh, vm
+from remo_tart import launchd, provision, ssh, vm
 from remo_tart.config import ProjectConfig
 from remo_tart.console import done, get_console, step
 from remo_tart.errors import RemoTartError
@@ -121,7 +121,7 @@ def ensure_attached(
     umbrella_entry = MountEntry(name=pool.name, host_path=repo_root.resolve())
     manifest_write(manifest_path, [umbrella_entry])
 
-    vm_state = _read_state(pool)
+    vm_state = _read_state(pool, expected_mount=umbrella_entry)
 
     mounts = manifest_read(manifest_path)
     actions = decide(vm_state)
@@ -139,6 +139,14 @@ def ensure_attached(
 
     if vm.is_running(pool.name):
         _configure_ssh(project, pool, key_path)
+        if any(a != Action.NOTHING for a in actions):
+            step("running packs ensure + project provision hook")
+            rc = provision.run_provision(pool.name, project, mounts, verify=False)
+            if rc != 0:
+                raise RemoTartError(
+                    f"provision failed with exit code {rc}",
+                    hint="re-run with -v for verbose pack output, or check guest logs",
+                )
 
     final_manifest = manifest_read(manifest_path)
     attachment = WorktreeAttachment(
@@ -171,17 +179,68 @@ def _running_mount_names(vm_name: str) -> set[str]:
     return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
 
-def _read_state(pool: PoolConfig) -> VmState:
+def _running_mount_bindings(label_str: str) -> dict[str, Path] | None:
+    """Return ``{share_name: host_path}`` for the running ``tart run`` job.
+
+    Reads the launchd job's argv via :func:`launchd.running_tart_argv` and
+    extracts each ``--dir <name>:<host_path>`` pair. Returns ``None`` when
+    the job is not active so callers can distinguish "no job" from
+    "job has zero bindings".
+    """
+    argv = launchd.running_tart_argv(label_str)
+    if argv is None:
+        return None
+    bindings: dict[str, Path] = {}
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--dir" and i + 1 < len(argv):
+            spec = argv[i + 1]
+            if ":" in spec:
+                name, raw_path = spec.split(":", 1)
+                bindings[name] = Path(raw_path)
+            i += 2
+        else:
+            i += 1
+    return bindings
+
+
+def _read_state(pool: PoolConfig, expected_mount: MountEntry | None = None) -> VmState:
     """Read current VM state for *pool*.
 
-    ``mount_matches`` is True iff the running guest has the umbrella share
-    (named after the pool) visible under ``/Volumes/My Shared Files``.
+    ``mount_matches`` requires both:
+
+    1. The guest can see a share named ``pool.name`` under
+       ``/Volumes/My Shared Files/`` (ground truth from inside the VM).
+    2. The host-side ``tart run`` argv binds that share to
+       ``expected_mount.host_path`` (when provided). Comparing the host path
+       catches *manifest drift* — i.e. the manifest now says the umbrella
+       root but the running VM is still bound to a single worktree from a
+       previous attach.
+
+    When ``expected_mount`` is omitted, only the name-presence check runs
+    (preserves prior behaviour for callers that don't have an expectation).
     """
     name = pool.name
     exists = vm.exists(name)
     running = exists and vm.is_running(name)
-    mount_matches = pool.name in _running_mount_names(name) if running else False
-    return VmState(exists=exists, running=running, mount_matches=mount_matches)
+    if not running:
+        return VmState(exists=exists, running=False, mount_matches=False)
+
+    name_visible = pool.name in _running_mount_names(name)
+    if not name_visible:
+        return VmState(exists=exists, running=True, mount_matches=False)
+
+    if expected_mount is None:
+        return VmState(exists=exists, running=True, mount_matches=True)
+
+    bindings = _running_mount_bindings(launchd.label(name))
+    if bindings is None:
+        return VmState(exists=exists, running=True, mount_matches=False)
+    actual = bindings.get(pool.name)
+    if actual is None:
+        return VmState(exists=exists, running=True, mount_matches=False)
+    matches = actual.resolve() == expected_mount.host_path.resolve()
+    return VmState(exists=exists, running=True, mount_matches=matches)
 
 
 def _normalize_worktree_gitdirs(repo_root: Path) -> None:
